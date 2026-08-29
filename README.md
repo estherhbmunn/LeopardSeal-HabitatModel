@@ -1,2 +1,2 @@
 # LeopardSeal-HabitatModel
-Habitat model for Leopard seals on the Western Antarctic Peninsula
+Code used for developing a habitat model for Leopard seals on the Western Antarctic Peninsula
