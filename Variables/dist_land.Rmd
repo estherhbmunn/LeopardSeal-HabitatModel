@@ -1,0 +1,48 @@
+---
+title: "dist_land"
+output: html_document
+---
+
+set up
+```{r}
+
+library(sf)
+
+# unzip("/home2/ISAD/em1105/2026_Project/Variables/gshhg-shp-2.3.7.zip",
+#     exdir = "/home2/ISAD/em1105/2026_Project/Variables/gshhg")
+
+coast_L1 <- st_read("/home2/ISAD/em1105/2026_Project/Variables/gshhg/GSHHS_shp/f/GSHHS_f_L1.shp")
+
+coast_L5 <- st_read("/home2/ISAD/em1105/2026_Project/Variables/gshhg/GSHHS_shp/f/GSHHS_f_L5.shp")
+
+coast <- rbind(coast_L1, coast_L5)
+
+plot(st_geometry(coast), col = "lightgrey", border = "black")
+
+
+```
+
+run
+```{r}
+
+coast_3031 <- st_transform(coast, 3031) #transform into 3031 to avoid s2 error
+tracks_3031 <- st_transform(tracks_vars_behav, 3031)
+
+nearest_idx <- st_nearest_feature(tracks_3031, coast_3031) # nearest coastline index
+nearest_land <- coast_3031[nearest_idx, ] #extract nearest land geometries 
+dist_land <- st_distance(tracks_3031, nearest_land, by_element = TRUE) #compute distances 
+tracks_vars_behav$dist_land <- as.numeric(dist_land) #convert to numeric 
+
+tracks_vars_behav <- tracks_vars_behav[!(tracks_vars_behav$bathy == 0 & tracks_vars_behav$dist_land > 0), ]
+
+saveRDS(tracks_vars_behav, "tracks_vars_behav.rds")
+
+```
+
+
+
+
+
+
+
+

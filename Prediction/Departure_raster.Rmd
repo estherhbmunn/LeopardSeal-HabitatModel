@@ -1,0 +1,72 @@
+---
+title: "Resid_raster"
+output: html_document
+---
+
+Annual means
+```{r}
+library(terra)
+
+#uo
+mean.uo <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "uo"), fun='mean', na.rm=T)
+
+#vo
+mean.vo <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "vo"), fun='mean', na.rm=T)
+
+#chl
+mean.chl <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_chlorophyll-a.nc"), fun ='mean', na.rm=T)
+
+#ice_conc
+mean.ice <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "siconc") , fun='mean', na.rm=T)
+
+mean.ice <- subst(mean.ice, NA, 0) #so that open water gets 0 conc. and appears in the predict raster
+
+#make them match
+template <- mean.uo
+
+chl_pred <- resample(mean.chl, template, method = "bilinear")
+
+compareGeom(
+  mean.uo,
+  mean.vo,
+  chl_pred,
+  mean.ice)
+
+#rename them to fit model
+names(mean.uo) <- "uo"
+names(mean.vo) <- "vo"
+names(chl_pred) <- "chl"
+names(mean.ice) <- "ice_conc"
+
+#stack them
+mean_stack_dep <- c(mean.vo, mean.uo, chl_pred, mean.ice)
+
+plot(mean_stack_dep)
+
+#saveRDS(mean_stack_dep, 'mean_stack_dep.rds')
+```
+
+Predict
+```{r}
+#remove id for this and add REML
+glmm_asgam_reml <- gam(
+  change_bin ~ 
+  uo + vo + chl + ice_conc,
+  family = binomial,
+  method = 'REML',
+  data = tracks_b)
+
+summary(glmm_asgam_reml)
+gam.check(glmm_asgam_reml)
+
+prediction_rast_dep_gam <- predict(mean_stack_dep, glmm_asgam_reml, fun=predict, type= "response", se.fit=TRUE)
+
+plot(prediction_rast_dep_gam)
+
+global(prediction_rast_dep_gam, range, na.rm=TRUE)
+
+#saveRDS(prediction_rast_dep_gam, 'prediction_rast_dep_gam.rds')
+
+```
+
+

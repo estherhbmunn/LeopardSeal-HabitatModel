@@ -1,0 +1,126 @@
+---
+title: "chlorophyll-a"
+output: html_document
+---
+
+getting data
+```{r}
+
+path_copernicusmarine <- "~/miniforge3/bin/conda"
+
+output_directory <- "/home2/ISAD/em1105/2026_Project/Variables"
+dir.create(output_directory, showWarnings = FALSE, recursive = TRUE)
+
+command <- paste(
+  "~/miniforge3/bin/conda run -n copernicus copernicusmarine subset",
+  "--dataset-id cmems_mod_glo_bgc_my_0.25deg_P1D-m",
+  "--variable chl",
+  "--minimum-longitude -94",
+  "--maximum-longitude -24",
+  "--minimum-latitude -75",
+  "--maximum-latitude -44",
+  "--start-datetime 2017-10-01T00:00:00",
+  "--end-datetime 2019-10-31T00:00:00",
+  "--minimum-depth 0.5057600140571594",
+  "--maximum-depth 0.5057600140571594",
+  "-o", shQuote(output_directory),
+  sep = " ")
+
+system(command)
+```
+
+set up
+```{r}
+library(terra)
+
+chl <- rast("cmems_chlorophyll-a.nc")
+
+```
+
+dates
+```{r}
+
+time(chl) <- as.Date(time(chl))
+
+```
+
+chl calc
+```{r}
+
+tracks_vect <- vect(tracks_vars_behav)
+
+tracks_vars_behav$chl <- NA_real_
+
+pb <- txtProgressBar(
+  min = 0,
+  max = length(unique(tracks_vars_behav$day)),
+  style = 3
+)
+
+counter <- 0
+
+for(d in unique(tracks_vars_behav$day)) { #loop; for a day in tracks
+ counter <- counter + 1 #to count progress
+layer_idx <- which(time(chl) == d) #get the raster layer (for each tracks day)
+r <- chl[[layer_idx]] #get the sst for that layer
+idx <- which(tracks_vars_behav$day == d) #get each point for that day
+vals <- terra::extract(r, tracks_vect[idx]) #get the value for the cell of the tracks on that day
+tracks_vars_behav$chl[idx] <- vals[,2]  #get the raster value ([,1] would return feature ID)
+  setTxtProgressBar(pb, counter)
+}
+
+close(pb)
+
+saveRDS(tracks_vars_behav, "tracks_vars_behav.rds")
+
+
+```
+
+Lag
+```{r}
+
+tracks_vect <- vect(tracks_vars_behav)
+
+tracks_vars_behav$chl_1 <- NA_real_
+
+pb <- txtProgressBar(
+  min = 0,
+  max = length(unique(tracks_vars_behav$day)),
+  style = 3)
+
+counter <- 0
+
+
+# 1 month 
+
+for(d in unique(tracks_vars_behav$day)) { 
+ counter <- counter + 1 
+layer_idx <- which(time(chl) == d - 30) #get the raster layer (1 month earlier)
+r <- chl[[layer_idx]] 
+idx <- which(tracks_vars_behav$day == d)
+vals <- terra::extract(r, tracks_vect[idx]) 
+tracks_vars_behav$chl_1[idx] <- vals[,2]
+  setTxtProgressBar(pb, counter)
+}
+
+
+# 3 months
+
+tracks_vars_behav$chl_3 <- NA_real_
+
+for(d in unique(tracks_vars_behav$day)) { 
+ counter <- counter + 1 
+layer_idx <- which(time(chl) == d - 90) #get the raster layer (3 months earlier)
+r <- chl[[layer_idx]] 
+idx <- which(tracks_vars_behav$day == d)
+vals <- terra::extract(r, tracks_vect[idx]) 
+tracks_vars_behav$chl_3[idx] <- vals[,2]
+  setTxtProgressBar(pb, counter)
+}
+
+close(pb)
+
+saveRDS(tracks_vars_behav, "tracks_vars_behav.rds")
+
+```
+

@@ -1,0 +1,49 @@
+---
+title: "vertical_mixed_layer"
+output: html_document
+---
+set up
+```{r}
+library(terra)
+
+vml <- rast("cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "mlotst")
+```
+
+dates
+```{r}
+
+time(vml) <- as.Date(time(vml))
+
+```
+
+calc
+```{r}
+
+tracks_vect <- vect(tracks_vars_behav)
+
+tracks_vars_behav$vml <- NA_real_
+
+pb <- txtProgressBar(
+  min = 0,
+  max = length(unique(tracks_vars_behav$day)),
+  style = 3
+)
+
+counter <- 0
+
+for(d in unique(tracks_vars_behav$day)) { #loop; for a day in tracks
+ counter <- counter + 1 #to count progress
+layer_idx <- which(time(vml) == d) #get the raster layer (for each tracks day)
+r <- vml[[layer_idx]] #get the sst for that layer
+idx <- which(tracks_vars_behav$day == d) #get each point for that day
+vals <- terra::extract(r, tracks_vect[idx]) #get the value for the cell of the tracks on that day
+tracks_vars_behav$vml[idx] <- vals[,2]  #get the raster value ([,1] would return feature ID)
+  setTxtProgressBar(pb, counter)
+}
+
+close(pb)
+
+saveRDS(tracks_vars_behav, "tracks_vars_behav.rds")
+
+```
+

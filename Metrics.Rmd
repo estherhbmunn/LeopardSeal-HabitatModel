@@ -1,0 +1,60 @@
+---
+title: "Metrics"
+output: html_document
+---
+
+tracking days
+```{r}
+library(dplyr)
+
+summary_tbl <- leopardseal_mp_steps %>%
+  group_by(id) %>%
+  summarise(
+    start = min(date),
+    end = max(date),
+    tag_days = as.numeric(difftime(end, start, units = "days"))
+  )
+
+```
+
+Total distance
+```{r}
+
+summary_tbl <- leopardseal_mp_steps %>%
+  group_by(id) %>%
+  summarise(
+    total_distance_km = sum(step_length_km, na.rm = TRUE)
+  )
+
+
+```
+
+daily travel 
+```{r}
+summary_tbl <- leopardseal_mp_steps %>%
+  group_by(id) %>%
+  summarise(
+    tag_days = as.numeric(difftime(max(date), min(date), units = "days")),
+    total_distance_km = sum(step_length_km, na.rm = TRUE),
+    mean_daily_distance_km = total_distance_km / tag_days
+  )
+```
+
+Mean
+```{r}
+
+overall <- summary_tbl %>%
+  summarise(
+    tracking_days_mean = mean(tag_days, na.rm = TRUE),
+    tracking_days_sd = sd(tag_days, na.rm = TRUE),
+    
+    distance_mean = mean(total_distance_km, na.rm = TRUE),
+    distance_sd = sd(total_distance_km, na.rm = TRUE),
+    
+    daily_distance_mean = mean(mean_daily_distance_km, na.rm = TRUE),
+    daily_distance_sd = sd(mean_daily_distance_km, na.rm = TRUE)
+  )
+
+```
+
+

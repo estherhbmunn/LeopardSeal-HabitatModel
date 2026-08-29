@@ -1,0 +1,173 @@
+---
+title: "Availability_simulated.tracks"
+output: html_document
+date: "2026-06-13"
+---
+
+#install
+```{r}
+#library(remotes)
+#install_github("https://github.com/ryanreisinger/availability.git")
+
+```
+
+packages
+```{r}
+library(availability)
+library(trip)
+library(geosphere)
+library(ggplot2)
+library(maps)
+
+```
+
+map
+```{r}
+base_map <- function(lon_range, lat_range) {
+    ggplot(mapping = aes(lon, lat)) +
+        borders("world", fill="grey90",colour="grey") +
+        coord_cartesian(xlim = lon_range + diff(lon_range) * 0.05 * c(-1, 1),
+                        ylim = lat_range + diff(lat_range) * 0.05 * c(-1, 1)) +
+        theme_bw()
+}
+
+```
+
+simulate tracks 
+```{r}
+
+pred <- leopardseal_all_tracks_mp
+
+arfit <- surrogateARModel(pred[, c("lon", "lat")]) #fitted model 
+
+#trkar <- surrogateAR(arfit, as.matrix(pred[, c("lon", "lat")]), pred$date, #use fitted model to generate new tracks
+             #        fixed, #add fixed start point
+             #       point.check = gshhsMask()) #add land mask from above 
+
+```
+
+
+simulate tracks per individual 
+```{r}
+
+n_sims_i <- 48 # per individual (21) = >1000 (1008)
+
+#progress bar
+total_sims <- length(unique(pred$id)) * n_sims_i
+pb <- txtProgressBar(min = 0, max = total_sims, style = 3)
+counter <- 0
+
+sim_tracks_i <- do.call(rbind, lapply(unique(pred$id), function(ind) {
+  # fix individual's track length and start point
+  ind_track <- pred[pred$id == ind, ]
+  fixed <- logical(nrow(ind_track))
+  fixed[1] <- TRUE
+  do.call(rbind, lapply(seq_len(n_sims_i), function(i) {
+    trkar <- surrogateAR(arfit, as.matrix(ind_track[, c("lon", "lat")]),
+                         ind_track$date, fixed, point.check = gshhsMask()) #loop per individual id
+     counter <<- counter + 1  # updates counter in the parent environment
+    setTxtProgressBar(pb, counter)
+    data.frame(sim_id = paste0(ind, "_", i),#create df with sim_id , lon, lat
+               lon = trkar$xs[,1], lat = trkar$xs[,2])
+  }))
+}))
+
+close(pb)
+
+#write.csv(sim_tracks_i, "sim_tracks_i.csv", row.names = FALSE)
+
+
+```
+
+select 3 per individual 
+```{r}
+
+lapply(1:21, function(i) sample(1:48, 3)) #21 sets of 3 random numbers between 1 and 48
+
+keep <- c(
+  "173711_11", "173711_34", "173711_10",  # 173711
+  "173712_47", "173712_12", "173712_5",   # 173712
+  "173713_33", "173713_45", "173713_13",  # 173713
+  "173714_8",  "173714_33", "173714_5",   # 173714
+  "173715_6",  "173715_38", "173715_37",  # 173715
+  "173716_25", "173716_23", "173716_7",   # 173716
+  "173717_40", "173717_32", "173717_46",  # 173717
+  "173718_35", "173718_31", "173718_27",  # 173718
+  "173719_17", "173719_8",  "173719_38",  # 173719
+  "173720_8",  "173720_5",  "173720_18",  # 173720
+  "173721_33", "173721_8",  "173721_44",  # 173721
+  "180842_14", "180842_20", "180842_30",  # 180842
+  "180843_46", "180843_5",  "180843_41",  # 180843
+  "180850_6",  "180850_45", "180850_48",  # 180850
+  "180851_42", "180851_20", "180851_17",  # 180851
+  "180852_5",  "180852_43", "180852_23",  # 180852
+  "180853_41", "180853_47", "180853_40",  # 180853
+  "180854_34", "180854_8",  "180854_2",   # 180854
+  "180855_14", "180855_29", "180855_37",  # 180855
+  "180856_38", "180856_48", "180856_35",  # 180856
+  "180857_17", "180857_26", "180857_16"   # 180857
+)
+
+selected_tracks <- sim_tracks_i[sim_tracks_i$sim_id %in% keep, ]
+
+#write.csv(selected_tracks, "selected_sim_tracks.csv", row.names = FALSE)
+
+```
+
+
+compare the tracks
+```{r}
+
+cpal <- c("#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#66A61E", "#E6AB02")
+
+base_map(range(pred$lon, selected_tracks$lon), range(pred$lat, selected_tracks$lat)) +
+  geom_path(data = pred, aes(x = lon, y = lat, group = id), colour = cpal[1], alpha = 0.5) + ## real tracks (green)
+  geom_path(data = selected_tracks, aes(x = lon, y = lat, group = sim_id), colour = cpal[2], alpha = 0.5) + ## simulated tracks (orange)
+  geom_point(data = pred[pred$id == pred$id[1], ][c(1, nrow(pred[pred$id == pred$id[1], ])), ], 
+             aes(x = lon, y = lat), col = "red") ## start and end points
+
+```
+
+combine with pred (real tracks)
+```{r}
+library(dplyr)
+
+# prepare real tracks
+pred_presence <- pred %>%
+  mutate(presence = 1,
+         track_id = paste0(id, "_real")) %>%
+  select(id, date, lon, lat, presence, track_id)
+
+# prepare simulated tracks
+sim_presence <- selected_tracks %>%
+  mutate(id = sub("_.*", "", sim_id),
+         presence = 0,
+         track_id = sim_id) %>%
+  group_by(track_id) %>%
+  mutate(step = row_number()) %>%
+  left_join(pred %>% group_by(id) %>% mutate(step = row_number()) %>% 
+              select(id, step, date), by = c("id", "step")) %>%
+  ungroup() %>%
+  select(id, date, lon, lat, presence, track_id)
+
+# combine
+combined_df <- rbind(pred_presence, sim_presence)
+
+#write.csv(combined_df, "combined_tracks.csv", row.names = FALSE)
+```
+
+```{r}
+
+base_map(range(tracks$lon), range(tracks$lat)) +
+  geom_path(data = tracks, 
+            aes(x = lon, y = lat, group = id, colour = factor(presence)), 
+            alpha = 0.5) +
+  scale_colour_manual(values = c("0" = cpal[1], "1" = cpal[2]),
+                      labels = c("Absence", "Presence"),
+                      name = "Presence") +
+  geom_point(data = tracks[tracks$id == tracks$id[1], ][c(1, nrow(tracks[tracks$id == tracks$id[1], ])), ],
+             aes(x = lon, y = lat), col = "red")
+```
+
+
+

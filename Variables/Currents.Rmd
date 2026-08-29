@@ -1,0 +1,127 @@
+---
+title: "Currents"
+output: html_document
+---
+
+set up
+```{r}
+
+library(ncdf4)
+library(terra)
+
+#uo — eastward sea water velocity (m/s)
+uo <- rast("cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "uo") 
+
+#vo — northward sea water velocity (m/s)
+vo <- rast("cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "vo") 
+
+```
+
+dates 
+```{r}
+
+tracks <- tracks_with_vars
+
+# Convert raster time to dates (daily resolution)
+time(uo) <- as.Date(time(uo))
+time(vo) <- as.Date(time(vo))
+
+
+```
+
+add uo and vo column
+```{r}
+
+#turns into spatVector points for terra to extract
+
+tracks_vect <- vect(as.data.frame(tracks), geom = c("lon", "lat"), crs = "EPSG:4326")
+
+tracks$uo <- NA_real_ 
+tracks$vo <- NA_real_ 
+
+
+pb <- txtProgressBar(
+  min = 0,
+  max = length(unique(tracks$day)),
+  style = 3
+)
+
+counter <- 0
+
+#UO
+for(d in unique(tracks$day)) { #loop; for a day in tracks
+counter <- counter + 1 #to count progress
+layer_idx <- which(time(uo) == d) #get the raster layer (for each tracks day)
+r <- uo[[layer_idx]] #get the sst for that layer
+idx <- which(tracks$day == d) #get each point for that day
+vals <- terra::extract(r, tracks_vect[idx]) #get the value for the cell of the tracks on that day
+tracks$uo[idx] <- vals[,2]  #get the raster value ([,1] would return feature ID)
+  setTxtProgressBar(pb, counter)
+}
+
+#VO
+for(d in unique(tracks$day)) { #loop; for a day in tracks
+counter <- counter + 1 #to count progress
+layer_idx <- which(time(vo) == d) #get the raster layer (for each tracks day)
+r <- vo[[layer_idx]] #get the sst for that layer
+idx <- which(tracks$day == d) #get each point for that day
+vals <- terra::extract(r, tracks_vect[idx]) #get the value for the cell of the tracks on that day
+tracks$vo[idx] <- vals[,2]  #get the raster value ([,1] would return feature ID)
+  setTxtProgressBar(pb, counter)
+}
+
+close(pb)
+
+
+saveRDS(tracks, "tracks_with_vars.rds")
+
+
+```
+
+
+EKE
+```{r}
+
+library(terra)
+
+#calculate eddy velocity for each cell
+u_mean <- mean(uo) # Mean current at each grid cell over time
+v_mean <- mean(vo)
+
+u_prime <- uo - u_mean # Eddy (anomaly) velocities
+v_prime <- vo - v_mean
+
+# Eddy Kinetic Energy
+EKE <- 0.5 * (u_prime^2 + v_prime^2)
+
+
+# loop
+
+tracks_vect <- vect(tracks_vars_behav)
+
+tracks_vars_behav$EKE <- NA_real_ 
+
+pb <- txtProgressBar(
+  min = 0,
+  max = length(unique(tracks_vars_behav$day)),
+  style = 3)
+
+counter <- 0
+
+for(d in unique(tracks_vars_behav$day)) { #loop; for a day in tracks
+counter <- counter + 1 #to count progress
+layer_idx <- which(time(EKE) == d) #get the raster layer (for each tracks day)
+r <- EKE[[layer_idx]] #get the EKE for that layer
+idx <- which(tracks_vars_behav$day == d) #get each point for that day
+vals <- terra::extract(r, tracks_vect[idx]) #get value for the cell of the tracks on that day
+tracks_vars_behav$EKE[idx] <- vals[,2]  #get the raster value ([,1] would return feature ID)
+  setTxtProgressBar(pb, counter)
+}
+
+saveRDS(tracks_vars_behav, "tracks_vars_behav.rds")
+
+```
+
+
+
+

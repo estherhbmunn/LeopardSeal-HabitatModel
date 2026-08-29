@@ -1,0 +1,38 @@
+---
+title: "Comparison"
+output: html_document
+---
+
+Avergae glmm and gam2
+```{r}
+library(sf)
+
+#glmm
+prediction_rast_env <- unwrap(prediction_rast_env)
+
+#GAM2 
+prediction_rast_env_gam_k <- unwrap(prediction_rast_env_gam_k)
+
+prediction_rast_env <- rast("prediction_rast_env.rds")
+prediction_rast_env_gam_k <- rast("prediction_rast_env_gam_k.rds")
+
+#average the two
+pred_avg <- (prediction_rast_env + prediction_rast_env_gam_k) / 2
+
+#plot
+plot(pred_avg)
+
+#change colours and plot indivudal layers
+plot(
+  pred_avg[[2]],
+  col = colorRampPalette(c(
+    "#4575b4", "#74add1", "#91bfdb",
+    "#fee090", "#fc8d59", "#d73027"
+  ))(100),
+  main = "SE Fit"
+)
+
+
+
+```
+

@@ -1,0 +1,76 @@
+---
+title: "SST"
+output: html_document
+date: "2026-05-31"
+---
+
+set up 
+```{r}
+
+library(ncdf4)
+
+nc <- nc_open("cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc")
+
+#load into spatraster
+library(terra)
+
+sst <- rast("cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "thetao") 
+
+```
+
+dates 
+```{r}
+
+tracks <- tracks_with_vars
+
+# Convert raster time to dates (daily resolution)
+time(sst) <- as.Date(time(sst))
+
+tracks$day <- as.Date(tracks$date) #add day column
+
+#make sure they are aligned
+setdiff(tracks$day, time(sst))
+
+```
+
+add sst column
+```{r}
+
+#turns into spatVector points for terra to extract
+
+tracks_vect <- vect(as.data.frame(tracks), geom = c("lon", "lat"), crs = "EPSG:4326")
+
+tracks$sst <- NA_real_ #make column, for now NAs
+
+
+pb <- txtProgressBar(
+  min = 0,
+  max = length(unique(tracks$day)),
+  style = 3
+)
+
+counter <- 0
+
+for(d in unique(tracks$day)) { #loop; for a day in tracks
+ counter <- counter + 1 #to count progress
+layer_idx <- which(time(sst) == d) #get the raster layer (for each tracks day)
+r <- sst[[layer_idx]] #get the sst for that layer
+idx <- which(tracks$day == d) #get each point for that day
+vals <- terra::extract(r, tracks_vect[idx]) #get the value for the cell of the tracks on that day
+tracks$sst[idx] <- vals[,2]  #get the raster value ([,1] would return feature ID)
+  setTxtProgressBar(pb, counter)
+}
+
+close(pb)
+
+tracks <- tracks_with_vars
+
+#remove less than -1.8
+tracks <- subset(tracks, sst >= -1.8)
+
+saveRDS(tracks, "tracks_with_vars.rds")
+
+
+```
+
+

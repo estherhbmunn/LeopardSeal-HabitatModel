@@ -1,0 +1,62 @@
+---
+title: "Behaviour"
+output: html_document
+date: "2026-06-14"
+---
+#Create binary
+
+tracks <- leopardseal_all_tracks_mp
+
+tracks$g_bin <- ifelse(tracks$g > 0.5, 1, 0)
+
+# Save it
+saveRDS(tracks, "tracks.rds")
+
+# Later reload it
+```{r}
+tracks <- readRDS("tracks.rds")
+```
+
+Re do with sims
+```{r}
+
+library(dplyr)
+
+ls <- leopardseal_all_tracks_mp
+
+tracks_real <- tracks %>%
+  filter(presence != 0)
+
+tracks_sim <- tracks %>%
+  filter(presence != 1)
+
+tracks_sim$id  <- as.character(tracks_sim$id)
+real_filter$id <- as.character(real_filter$id)
+
+
+library(sf)
+library(dplyr)
+
+real_filter_clean <- real_filter %>%
+  select(-geometry, -`...18`) %>%
+  st_as_sf(coords = c("lon", "lat"), crs = st_crs(tracks_sim), remove = FALSE)
+
+real_filter_clean$id <- as.character(real_filter_clean$id)
+tracks_vars_behav <- bind_rows(tracks_sim, real_filter_clean)
+
+
+```
+
+binary
+```{r}
+
+tracks_vars_behav$g_bin <- ifelse(tracks_vars_behav$g > 0.5, 1, 0)
+
+saveRDS(tracks_vars_behav, "tracks_vars_behav.rds")
+
+```
+
+
+
+
+

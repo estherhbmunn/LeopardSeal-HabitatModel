@@ -1,0 +1,290 @@
+---
+title: "Env_raster"
+output: html_document
+---
+
+Annual means
+```{r}
+library(terra)
+
+#sst
+mean.sst = app(rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "thetao"), fun='mean', na.rm=T)
+
+#bathy
+bathy <- rast("/home2/ISAD/em1105/2026_Project/Variables/gebco_2026_n-44.0_s-75.0_w-95.0_e-25.0.nc")
+
+#uo
+mean.uo <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "uo"), fun='mean', na.rm=T)
+
+#roughness
+roughness <- terrain(rast("/home2/ISAD/em1105/2026_Project/Variables/gebco_2026_n-44.0_s-75.0_w-95.0_e-25.0.nc"), "roughness")
+
+mean.rough <- app(roughness, fun='mean', na.rm=T)
+
+#chl
+# normal annual mean
+chl <- rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_chlorophyll-a.nc")
+mean.chl <- mean(chl[[1:669]])
+mean.chl3 <- mean(chl[[93:761]])
+
+#vml
+mean.vml <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "mlotst"), fun='mean', na.rm=T)
+
+
+#make them match
+template <- mean.sst
+
+bathy_pred <- resample(bathy, template, method = "bilinear")
+rough_pred <- resample(mean.rough, template, method = "bilinear")
+chl_pred <- resample(mean.chl, template, method = "bilinear")
+chl3_pred <- resample(mean.chl3, template, method = "bilinear")
+
+compareGeom(
+  mean.sst,
+  bathy_pred,
+  rough_pred,
+  chl_pred,
+  chl3_pred,
+  mean.uo,
+  mean.vml)
+
+#rename them to fit model
+names(mean.sst) <- "sst"
+names(bathy_pred) <- "bathy"
+names(mean.uo) <- "uo"
+names(chl_pred) <- "chl"
+names(chl3_pred) <- "chl_3"
+names(rough_pred) <- "roughness"
+names(mean.vml) <- "vml"
+
+#stack them
+mean_stack_env_glmm <- c(mean.sst, bathy_pred, mean.uo, chl_pred, chl3_pred, rough_pred, mean.vml)
+
+```
+
+ENV Model
+```{r}
+library(lme4)
+
+glmm3 <- glmer(presence ~ bathy + sst + uo + roughness + chl + chl_3 + vml + (1 | id),
+  data = tracks_vars_behav,
+  family = binomial)
+
+summary(glmm3)
+```
+
+Predict
+```{r}
+
+prediction_rast_env <- predict(mean_stack_env_glmm, glmm3, fun=predict, type= "response", re.form = NA, se.fit=TRUE)
+
+plot(prediction_rast_env)
+
+#saveRDS(prediction_rast_env, 'prediction_rast_env.rds')
+prediction_rast_env <- unwrap(prediction_rast_env)
+
+plot(prediction_rast_env,col = colorRampPalette(c("#4575b4", "#74add1","#74add1", "#91bfdb", "#91bfdb",
+  "#fee090",
+  "#fc8d59",
+  "#d73027"))(100)) 
+
+#plot one
+plot(
+  prediction_rast_env[[2]],
+  col = colorRampPalette(c(
+    "#4575b4", "#74add1", "#91bfdb",
+    "#fee090", "#fc8d59", "#d73027"
+  ))(100),
+  main = "SE Fit"
+)
+
+```
+
+GAM model
+```{r}
+
+gam_pred <- gam(
+  presence ~ 
+    s(sst)  + s(bathy) + s(roughness) + s(vml) + s(uo) + s(vo) +
+    s(chl) + s(chl_3) + s(ice_conc),
+  family = binomial,
+  method = 'REML',
+  data = tracks_vars_behav)
+
+summary(gam_pred)
+
+#ADD
+
+#vo
+mean.vo <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "vo"), fun='mean', na.rm=T)
+
+#ice_conc
+mean.ice <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "siconc") , fun='mean', na.rm=T)
+mean.ice <- subst(mean.ice, NA, 0) #so that open water gets 0 conc. and appears in the predict raster
+
+
+#make them match
+template <- mean.sst
+#add ice
+ice_pred <- resample(mean.ice, template, method = "bilinear")
+
+compareGeom(
+  mean.sst,
+  bathy_pred,
+  rough_pred,
+  chl_pred,
+  chl3_pred,
+  mean.uo,
+  mean.vml,
+  ice_pred)
+
+#rename them to fit model
+names(mean.sst) <- "sst"
+names(bathy_pred) <- "bathy"
+names(mean.uo) <- "uo"
+names(chl_pred) <- "chl"
+names(chl3_pred) <- "chl_3"
+names(rough_pred) <- "roughness"
+names(mean.vml) <- "vml"
+names(mean.vo) <- "vo"
+names(ice_pred) <- "ice_conc"
+
+#stack them
+mean_stack_env_gam <- c(mean.sst, bathy_pred, mean.uo, chl_pred, chl3_pred, rough_pred, mean.vml, mean.vo, ice_pred)
+
+plot(mean_stack_env_gam)
+
+#saveRDS(mean_stack_env_gam, 'mean_stack_env_gam.rds')
+
+#unwrap 
+mean_stack_env_gam <- unwrap(mean_stack_env_gam)
+prediction_rast_env_gam <- unwrap(prediction_rast_env_gam)
+
+#predict
+prediction_rast_env_gam <- predict(mean_stack_env_gam, gam_pred, fun=predict, type= "response", se.fit=TRUE)
+
+plot(prediction_rast_env_gam)
+
+#saveRDS(prediction_rast_env_gam, 'prediction_rast_env_gam.rds')
+
+#change colour
+library(RColorBrewer)
+library(viridis)
+
+plot(prediction_rast_env_gam, col = rev(colorRampPalette(brewer.pal(11, "RdYlBu"))(100)))
+
+plot(prediction_rast_env_gam, col = colorRampPalette(c("#4575b4", "#74add1","#74add1", "#91bfdb", "#91bfdb",
+  "#fee090",
+  "#fc8d59",
+  "#d73027"))(100)) #this one?? highlights the highest areas while keeping the middle ranges not so vibrant 
+
+plot(prediction_rast_env_gam, col = turbo(100))
+
+plot(prediction_rast_env_gam, col = rev(colorRampPalette(brewer.pal(11, "Spectral"))(100)))
+
+#plot one
+plot(
+  prediction_rast_env_gam[[2]],
+  col = colorRampPalette(c(
+    "#4575b4", "#74add1", "#91bfdb",
+    "#fee090", "#fc8d59", "#d73027"
+  ))(100),
+  main = "SE Fit"
+)
+
+
+```
+
+Prediction with gam with increased k
+```{r}
+#model with REML and without ID
+gam1_k3_reml_xid <- gam(
+  presence ~ 
+    s(sst)  + s(bathy, k=25) + s(roughness) + s(vml) + s(uo) + s(vo) +
+    s(chl, k=25) + s(chl_3, k=25) + s(ice_conc, k=25),
+  family = binomial,
+  method = 'REML',
+  data = tracks_vars_behav)
+
+
+gam.check(gam1_k3_reml_xid)
+
+#predict
+prediction_rast_env_gam_k <- predict(mean_stack_env_gam, gam1_k3_reml_xid, fun=predict, type= "response", se.fit=TRUE)
+
+plot(prediction_rast_env_gam_k)
+
+#saveRDS(prediction_rast_env_gam_k, 'prediction_rast_env_gam_k.rds')
+#unwrap 
+prediction_rast_env_gam_k <- unwrap(prediction_rast_env_gam_k)
+
+plot(mean_stack_env_gam)
+
+#plot one
+plot(
+  prediction_rast_env_gam_k[[1]],
+  col = colorRampPalette(c(
+    "#4575b4", "#74add1", "#91bfdb",
+    "#fee090", "#fc8d59", "#d73027"
+  ))(100),
+  main = "Fit"
+)
+```
+
+```{r}
+plot(prediction_rast_env_gam_k)
+
+plot(prediction_rast_env_gam_k, col = colorRampPalette(c("#4575b4", "#74add1","#74add1", "#91bfdb", "#91bfdb",
+  "#fee090",
+  "#fc8d59",
+  "#d73027"))(100)) 
+```
+
+All stack
+```{r}
+mean_stack_env_gam <- c(mean.sst, bathy_pred, mean.uo, chl_pred, chl3_pred, rough_pred, mean.vml, mean.vo, ice_pred)
+
+# chl1_pred, mean.ssh, slope_pred, mean.EKE
+
+#dist land, dist edge, dist ice ... 
+
+#chl 1
+# normal annual mean
+chl <- rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_chlorophyll-a.nc")
+mean.chl1 <- mean(chl[[31:699]])
+chl1_pred <- resample(mean.chl1, template, method = "bilinear")
+
+#ssh
+mean.ssh <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "zos"), fun='mean', na.rm=T)
+
+#slope
+slope <- terrain(rast("/home2/ISAD/em1105/2026_Project/Variables/gebco_2026_n-44.0_s-75.0_w-95.0_e-25.0.nc"), "slope")
+mean.slope <- app(slope, fun='mean', na.rm=T)
+slope_pred <- resample(mean.slope, template, method = "bilinear")
+
+#EKE
+mean.EKE <- app(EKE, fun='mean', na.rm=T)
+
+compareGeom(
+  mean.EKE,
+  slope_pred,
+  chl1_pred,
+  mean.ssh)
+
+#rename them to fit model
+names(mean.EKE) <- "EKE"
+names(chl1_pred) <- "chl_1"
+names(slope_pred) <- "slope"
+names(mean.ssh) <- "ssh"
+
+#stack
+variable_stack <- c(mean.EKE, chl1_pred, slope_pred, mean.ssh)
+
+all_stack <- c(mean_stack_env_gam, variable_stack)
+
+plot(all_stack)
+
+#saveRDS(all_stack, 'all_stack.rds')
+
+```
+

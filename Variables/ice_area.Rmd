@@ -1,0 +1,152 @@
+---
+title: "ice_area"
+output: html_document
+date: "2026-05-31"
+---
+
+load data
+```{r setup, include=FALSE}
+
+library(ncdf4)
+
+nc <- nc_open("cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc")
+
+```
+
+#Create binary
+
+tracks <- leopardseal_all_tracks_mp
+
+tracks$g_bin <- ifelse(tracks$g > 0.5, 1, 0)
+
+# Save it
+saveRDS(tracks, "tracks.rds")
+
+
+set up
+```{r}
+
+#load into spatraster
+library(terra)
+
+ice <- rast("cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "siconc") 
+
+
+```
+
+Align dates
+```{r}
+# ice value at this exact location and this exact time
+
+# Convert track timestamps to just dates (removes time-of-day)
+tracks$day <- as.Date(tracks$date)
+
+# Convert raster time to dates (daily resolution)
+time(ice) <- as.Date(time(ice))
+
+#make sure they are aligned
+setdiff(tracks_vars_behav$day, time(ice))
+
+```
+
+
+```{r}
+tracks_vect <- vect(tracks)
+ #turns into spatVector points for terra to extract
+
+tracks_vect <- project(tracks_vect, crs(ice))
+
+tracks$ice_conc <- NA_real_ #make ice_conc column, for now NAs
+
+for(d in unique(tracks$day)) { #loop; for a day in tracks
+layer_idx <- which(time(ice) == d) #get the raster layer (for each tracks day)
+r <- ice[[layer_idx]] #get the ice conc for that layer
+idx <- which(tracks$day == d) #get each point for that day
+vals <- terra::extract(r, tracks_vect[idx]) #get the ice value for the cell of the tracks on that day
+tracks$ice_conc[idx] <- vals[,2] } #get the raster value ([,1] would return feature ID)
+
+tracks$ice_conc[is.na(tracks$ice_conc)] <- 0
+
+res(ice)
+
+tracks$ice_pct = tracks$ice_conc * 100
+
+#remove >100 %
+tracks <- subset(tracks, ice_pct < 100)
+
+ice_3031 <- project(ice, "EPSG:3031")
+
+res(ice_3031)
+#	Ice concentration : cells are 5233.951 x 5233.951 metres (0.0833° x 0.0833°)
+
+saveRDS(tracks, "tracks_with_vars.rds")
+
+hist(tracks$ice_conc)
+
+
+```
+
+distance 
+```{r}
+
+#make ice edge
+
+ice_b <- ice >= 0.15 #binary
+
+edge <- (ice_b == 1) & (focal(ice_b, matrix(1,3,3), sum, na.policy="omit", pad=TRUE) < 9)
+
+edge_T <- classify(edge, cbind(0, NA))
+
+plot(edge_T[[280]])
+
+
+tracks_vect <- vect(tracks_vars_behav)
+tracks_vars_behav$dist_edge <- NA_real_
+days <- unique(tracks_vars_behav$day)
+
+
+pb <- txtProgressBar(min = 0, max = length(days), style = 3)
+
+for (i in seq_along(days)) {
+  dy <- days[i]
+  idx <- which(tracks_vars_behav$day == dy)
+  if (length(idx) == 0) {
+    setTxtProgressBar(pb, i)
+    next
+  }
+  pts <- tracks_vect[idx]
+  layer_idx <- which(time(edge_T) == dy)
+  if (length(layer_idx) == 0) {   # skip if no matching raster layer
+    setTxtProgressBar(pb, i)
+    next
+  }
+  
+  r <- edge_T[[layer_idx]]
+  edge_pts <- as.points(r, na.rm = TRUE)  # convert raster to edge points
+  if (nrow(edge_pts) == 0) { # skip if no edge cells that day
+    tracks_vars_behav$dist_edge[idx] <- NA
+    setTxtProgressBar(pb, i)
+    next
+  }
+  dist_mat <- terra::distance(pts, edge_pts)
+  tracks_vars_behav$dist_edge[idx] <- apply(dist_mat, 1, min, na.rm = TRUE)
+  setTxtProgressBar(pb, i)
+}
+
+close(pb)
+
+```
+
+
+
+turn negative if ice above 0.15
+```{r}
+
+tracks_vars_behav$dist_edge[tracks_vars_behav$ice_conc > 0.15] <- tracks_vars_behav$dist_edge[tracks_vars_behav$ice_conc > 0.15] * -1
+
+saveRDS(tracks_vars_behav, "tracks_vars_behav.rds")
+
+```
+
+
+

@@ -1,0 +1,202 @@
+---
+title: "GAM"
+output: html_document
+---
+
+Corr
+```{r}
+env_vars <- tracks_vars_behav[, c("bathy", "sst", "ice_conc", "uo", "vo", "ssh", "dist_shelf", "dist_land", "dist_edge", "EKE", "chl", "chl_1", "chl_3", "slope", "roughness", "vml")]
+
+env_vars<- st_drop_geometry(env_vars)
+
+cor_matrix <- cor( st_drop_geometry(env_vars), use = "pairwise.complete.obs" ) 
+cor_matrix #to ignore NAs 
+#dist land and bathy 0.75. -remove dist land
+#ssh and sst 0.85 - remove ssh
+#dist shelf and sst 0.78 .
+#dist edge and sst 0.87 . 
+#dist shelf and ssh 0.89 - remove dist shelf
+#dist edge and dist shelf 0.73 .
+#ssh and dist edge 0.79 - remove dist edge
+#chl1 and chl 0.72 .
+#chl1 and chl3 0.76 - remove chl 1
+#roughness and slope 0.98 - remove slope .
+
+library(rms)
+library(car)
+library(mgcv)
+
+#VIF
+glm_1 <- glm(change_bin ~ bathy + sst + ice_conc + uo + vo + ssh + dist_shelf + dist_land + dist_edge +
+               EKE + chl_1 + chl_3 + slope + roughness + chl + vml,
+  data = tracks_b,
+  family = binomial )
+
+summary(glm_1)
+
+vif(glm_1)
+#sst 5.89
+#chl_1 6.66
+#dist edge 4.17
+#chl3 3.76
+#slope 22
+#roughness 22
+
+#remove slope, chl 1, dist edge, shelf, land, ssh
+glm_2 <- glm(change_bin ~ bathy + sst + ice_conc + uo + vo +
+               EKE + chl_3 + roughness + chl + vml,
+  data = tracks_b,
+  family = binomial )
+
+vif(glm_2)
+#sst 3.32
+
+#Model selection
+
+vars <- c("change_bin", "bathy", "sst", "ice_conc", "uo", "vo",
+          "EKE", "roughness", "chl", "chl_3", "vml", "id")
+
+tracks_clean <- na.omit(tracks_b[, vars])
+
+
+glmm_c <- glmer(
+  change_bin ~ bathy + sst + ice_conc + uo + vo + EKE + roughness + chl + chl_3 + vml + (1 | id),
+  data = tracks_clean,
+  family = binomial)
+
+drop1(glmm_c, test = "Chi") #chl significant to keep, roughness just under 2 lower
+
+glmm_c2 <- update(glmm_c, . ~ . - roughness)
+drop1(glmm_c2, test = "Chi") 
+glmm_c3 <- update(glmm_c2, . ~ . - bathy)
+drop1(glmm_c3, test = "Chi") 
+glmm_c4 <- update(glmm_c3, . ~ . - sst)
+drop1(glmm_c4, test = "Chi") 
+glmm_c5 <- update(glmm_c4, . ~ . - chl_3)
+drop1(glmm_c5, test = "Chi") 
+glmm_c6 <- update(glmm_c5, . ~ . - vml)
+drop1(glmm_c6, test = "Chi") 
+glmm_c7 <- update(glmm_c6, . ~ . - EKE)
+drop1(glmm_c7, test = "Chi") 
+
+summary(glmm_c7)
+
+glmm <- glmer(
+  change_bin ~ bathy + sst + ice_conc + uo + vo + EKE + roughness + chl + chl_3 + vml + (1 | id),
+  data = tracks_b,
+  family = binomial)
+
+glmm_7 <- glmer(
+  change_bin ~ ice_conc + uo + vo  + chl + (1 | id),
+  data = tracks_b,
+  family = binomial)
+
+AIC(glmm, glmm_7) # 7 lower 
+
+```
+
+
+GAMs
+```{r}
+
+library(nlme)
+
+# Extract numeric day of the year (1 to 366) from the POSIXct object
+#tracks_b$day_of_year <- as.numeric(format(tracks_b$date, "%j"))
+
+# Ensure ID is explicitly a factor for the random effect
+tracks_b$id <- as.factor(tracks_b$id)
+
+#from final glmm, all smoothers
+gam <- gam(
+  change_bin ~ 
+  s(uo) + s(vo) + s(chl) + s(ice_conc) +
+    s(id, bs = "re"), # re is random effect
+  family = binomial,
+  method = 'ML',
+  data = tracks_b)
+
+summary(gam)
+
+gam.check(gam)
+
+#from final glmm, chl smoother 
+gam_1 <- gam(
+  change_bin ~ 
+   uo + vo + s(chl) + ice_conc +
+    s(id, bs = "re"), # re is random effect
+  family = binomial,
+    method = 'ML',
+  data = tracks_b)
+
+summary(gam_1)
+gam.check(gam_1)
+
+#all with smoothers
+gam_2 <- gam(
+  change_bin ~ 
+    s(sst)  + s(bathy) + s(roughness) + s(vml) + s(uo) + s(vo) + s(EKE) +
+    s(chl) + s(chl_3) + s(ice_conc) +
+    s(id, bs = "re"), 
+  method= 'ML',
+  family = binomial,
+  data = tracks_b)
+
+summary(gam_2)  
+gam.check(gam_2)
+
+AIC(gam, gam_1, gam_2) #gam 1 lower
+anova(gam, gam_1, gam_2) #gam 1 better
+
+#all, chl smoother
+gam_3 <- gam(
+  change_bin ~ 
+    sst  + bathy + roughness + vml + uo + vo + EKE +
+    s(chl) + chl_3 + ice_conc +
+    s(id, bs = "re"),
+    method= 'ML',
+  family = binomial,
+  data = tracks_b)
+
+summary(gam_3)
+
+AIC(gam_3, gam_2, gam_1) #gam_1 lower
+
+
+#plot GAM
+par(mfrow = c(3, 3))
+plot(gam_1, se = TRUE, shade = TRUE, scheme = 1) # under 0 means less likely to take long step
+
+#AIC
+glmm_asgam <- gam(
+  change_bin ~ 
+  uo + vo + chl + ice_conc +
+    s(id, bs = "re"), # re is random effect
+  family = binomial,
+  method = 'ML',
+  data = tracks_b)
+
+AIC(gam_1, glmm_7, glmm_asgam) #gam_1 and glmm_asgam lower (same number)
+AIC(gam_1, glmm_asgam) #same , but chl is edf 1 now so no need to smooth
+
+plot(glmm_asgam)
+
+
+
+```
+
+Zero inflation
+```{r}
+library(DHARMa)
+install.packages("mgcViz")
+library(mgcViz)
+
+sim <- simulateResiduals(glmm_asgam)
+plot(sim)
+testDispersion(sim)
+
+table(tracks_b$change_bin)
+```
+
+
+

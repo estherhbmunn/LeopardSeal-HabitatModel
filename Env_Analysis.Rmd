@@ -1,0 +1,537 @@
+---
+title: "Analysis"
+output: html_document
+---
+
+Collinearity
+```{r}
+#using pairs
+
+env_vars <- tracks_vars_behav[, c("bathy", "sst", "ice_conc", "uo", "vo", "ssh", "dist_shelf", "dist_land", "dist_edge", "EKE", "chl", "chl_1", "chl_3", "slope", "roughness", "vml")]
+
+env_vars<- st_drop_geometry(env_vars)
+
+cor_matrix <- cor( st_drop_geometry(env_vars), use = "pairwise.complete.obs" ) 
+cor_matrix #to ignore NAs 
+#dist land and bathy 0.75
+#ssh and sst 0.85
+#dist shelf and sst 0.78 .
+#dist edge and sst 0.87
+#dist shelf and ssh 0.89 .
+#dist edge and dist shelf 0.73 .
+#ssh and dist edge 0.79
+#chl1 and chl 0.72 ..
+#chl1 and chl3 0.76 ..
+#roughness and slope 0.98 .
+
+```
+
+VIF
+```{r}
+library(rms)
+
+glm_1 <- glm(presence ~ bathy + sst + ice_conc + uo + vo + ssh + dist_shelf + dist_land + dist_edge +
+               EKE + chl_1 + chl_3 + slope + roughness + chl + vml,
+  data = tracks_vars_behav,
+  family = binomial )
+
+vif(glm_1)
+#ssh 10.04
+#dist_shelf 11.02
+#slope 22.27
+#roughness 22.39
+
+#remove slope
+glm_2 <- glm(presence ~ bathy + sst + ice_conc + uo + vo + ssh + dist_shelf + dist_land + dist_edge +
+               EKE + chl_1 + chl_3 + roughness + chl + vml,
+  data = tracks_vars_behav,
+  family = binomial )
+
+vif(glm_2)
+#ssh 10.07
+#dist_shelf 11.05
+#roughness now 1.14
+
+#remove dist shelf
+glm_3 <- glm(presence ~ bathy + sst + ice_conc + uo + vo + ssh + dist_land + dist_edge +
+               EKE + chl_1 + chl_3 + roughness + chl + vml,
+  data = tracks_vars_behav,
+  family = binomial )
+
+vif(glm_3)
+#all under chl1 at 5.9
+
+#corr again
+
+env_vars2 <- tracks_vars_behav[, c("bathy", "sst", "ice_conc", "uo", "vo", "ssh", "dist_land", "dist_edge", "EKE", "chl", "chl_1", "chl_3", "roughness", "vml")]
+env_vars2<- st_drop_geometry(env_vars2)
+cor_matrix <- cor( st_drop_geometry(env_vars2), use = "pairwise.complete.obs" ) 
+cor_matrix
+#dist land and bathy 0.75
+#ssh and sst 0.84
+#sst and dist edge 0.87
+#ssh and dist edge 0.79
+#chl1 and chl 0.71
+#chl1 and chl3 0.76
+
+#remove chl1
+glm_4 <- glm(presence ~ bathy + sst + ice_conc + uo + vo + ssh + dist_land + dist_edge +
+               EKE + chl_3 + roughness + chl + vml,
+  data = tracks_vars_behav,
+  family = binomial )
+
+vif(glm_4)
+#all under sst at 4.5
+#dist edge 4.33 correlates too high (0.79 and 0.87) 
+
+#remove dist edge
+glm_5 <- glm(presence ~ bathy + sst + ice_conc + uo + vo + ssh + dist_land + EKE + chl_3 + roughness + chl + vml,
+  data = tracks_vars_behav,
+  family = binomial )
+
+vif(glm_5)
+#all under sst at 3.2 
+# ssh 1.35 but high corr (0.84) with sst
+
+#corr again
+
+env_vars3 <- tracks_vars_behav[, c("bathy", "sst", "ice_conc", "uo", "vo", "ssh", "dist_land", "EKE", "chl", "chl_3", "roughness", "vml")]
+env_vars3<- st_drop_geometry(env_vars3)
+cor_matrix <- cor( st_drop_geometry(env_vars3), use = "pairwise.complete.obs" ) 
+cor_matrix
+#dist land and bathy 0.75
+#ssh and sst 0.84
+
+#remove ssh 
+glm_6 <- glm(presence ~ bathy + sst + ice_conc + uo + vo + dist_land +
+               EKE + chl_3 + roughness + chl + vml,
+  data = tracks_vars_behav,
+  family = binomial )
+
+vif(glm_6)
+#all under dist land at 2.3
+
+#corr again
+
+env_vars4 <- tracks_vars_behav[, c("bathy", "sst", "ice_conc", "uo", "vo", "dist_land", "EKE", "chl", "chl_3", "roughness", "vml")]
+env_vars4<- st_drop_geometry(env_vars4)
+cor_matrix <- cor( st_drop_geometry(env_vars4), use = "pairwise.complete.obs" ) 
+cor_matrix
+#dist land and bathy 0.74 
+
+#remove dist land
+glm_7 <- glm(presence ~ bathy + sst + ice_conc + uo + vo + EKE + chl_3 + roughness + chl + vml,
+  data = tracks_vars_behav,
+  family = binomial )
+
+vif(glm_7)
+#all under sst at 2.16
+
+```
+
+pearson corr plot
+```{r}
+library(corrplot)
+
+env_vars5 <- tracks_vars_behav[, c("bathy", "sst", "ice_conc", "uo", "vo", "EKE", "chl_3", "roughness", "chl", "vml")]
+env_vars5<- st_drop_geometry(env_vars5)
+
+cor_mat <- cor(env_vars5, use = "complete.obs")
+corrplot(cor_mat)
+
+```
+
+Diagnostic plots ???
+```{r}
+
+library(lme4)
+
+glmm <- glmer(presence ~ bathy + sst + ice_conc + uo + vo + chl_3 +
+               EKE + roughness + chl + vml + (1 | id),
+  data = tracks_vars_behav,
+  family = binomial )
+
+#extract resids and fitted values
+diag_dat <- data.frame(
+  fitted = fitted(glm_8),
+  pearson_res = residuals(glm_8, type = "pearson"))
+
+#group by fitted values
+library(dplyr)
+
+group_size <- 400
+
+diag_grouped <- diag_dat %>%
+  arrange(fitted) %>%
+  mutate(group = ceiling(row_number() / group_size)) %>%
+  group_by(group) %>%
+  summarise(
+    fitted = mean(fitted),
+    pearson_res = mean(pearson_res),
+    .groups = "drop" )
+
+#plot
+library(ggplot2)
+
+ggplot(diag_grouped,
+       aes(fitted, pearson_res)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_smooth(method = "loess", se = FALSE) +
+  labs(x = "Mean fitted probability",
+       y = "Mean deviance residual")
+
+
+install.packages("DHARMa")
+library(DHARMa)
+
+sim <- simulateResiduals(glm_8)
+plot(sim)
+
+
+# all 4
+
+# Extract diagnostics
+diag_dat <- data.frame(
+  fitted = fitted(glmm),             
+  pearson = residuals(glmm, type = "pearson"),
+  deviance = residuals(glmm, type = "deviance"),
+  cooks = cooks.distance(glmm),
+  leverage = hatvalues(glmm))
+
+# Group residuals (400 observations per group)
+diag_grouped <- diag_dat %>%
+  arrange(fitted) %>%
+  mutate(group = ceiling(row_number()/400)) %>%
+  group_by(group) %>%
+  summarise(
+    fitted = mean(fitted),
+    pearson = mean(pearson),
+    .groups = "drop"  )
+
+#plots
+
+par(mfrow = c(2,2))
+
+# 1. Grouped Pearson residuals vs fitted
+plot(diag_grouped$fitted,
+     diag_grouped$pearson,
+     pch = 16,
+     xlab = "Fitted probability",
+     ylab = "Mean Pearson residual",
+     main = "Residuals vs Fitted")
+abline(h = 0, lty = 2)
+lines(lowess(diag_grouped$fitted,
+             diag_grouped$pearson),
+      col = "red", lwd = 2)
+
+# 2. QQ plot of deviance residuals
+qqnorm(diag_dat$deviance,
+       main = "Normal Q-Q")
+qqline(diag_dat$deviance,
+       col = "red")
+
+# 3. Cook's distance
+plot(diag_dat$cooks,
+     type = "h",
+     xlab = "Observation",
+     ylab = "Cook's distance",
+     main = "Cook's Distance")
+
+# 4. Leverage
+plot(diag_dat$leverage,
+     pch = 16,
+     xlab = "Observation",
+     ylab = "Leverage",
+     main = "Leverage")
+abline(h = 2*length(coef(glm_8))/nrow(diag_dat),
+       lty = 2,
+       col = "red")
+
+```
+
+
+Model selection - ENVIRONMENTAL 
+```{r}
+glmm <- glmer(
+  presence ~ bathy + sst + ice_conc + uo + vo + EKE + roughness + chl + chl_3 + vml + (1 | id),
+  data = tracks_vars_behav,
+  family = binomial)
+
+summary(glmm)
+
+#remove ice conc
+glmm1 <- glmer( presence ~ bathy + sst + vo + uo + EKE + roughness + chl + chl_3 + vml + (1 | id),
+  data = tracks_vars_behav,
+  family = binomial)
+
+anova(glmm, glmm1) #glmm1 lower
+
+#remove vo
+glmm2 <- glmer( presence ~ bathy + sst + uo + EKE + roughness + chl + chl_3 + vml + (1 | id),
+  data = tracks_vars_behav,
+  family = binomial)
+
+anova(glmm1, glmm2) #glmm_2 lower
+
+#remove EKE
+glmm3 <- glmer (presence ~ bathy + sst + uo + roughness + chl + chl_3 + vml + (1 | id),
+  data = tracks_vars_behav,
+  family = binomial)
+
+anova(glmm2, glmm3) #glmm3 lower
+
+summary(glmm3)
+
+```
+
+drop1 ENV
+```{r}
+
+vars <- c("presence", "bathy", "sst", "ice_conc", "uo", "vo",
+          "EKE", "roughness", "chl", "chl_3", "vml", "id")
+
+tracks_clean <- na.omit(tracks_vars_behav[, vars])
+
+glmm <- glmer(
+  presence ~ bathy + sst + ice_conc + uo + vo + EKE + roughness + chl + chl_3 + vml + (1 | id),
+  data = tracks_clean,
+  family = binomial)
+
+drop1(glmm, test = "Chi") # lowest when vo and ice_conc, then EKE removed
+
+
+```
+
+GAM
+```{r}
+#bathy + sst + uo + roughness + chl + chl_3 + vml
+
+tracks_vars_behav$id <- as.factor(tracks_vars_behav$id)
+
+#AIC lower without select=TRUE
+#edf shows all vars are not linear so gam is probably best
+#ML is used to be able to do AIC with others, but maybe dont use in final model?
+
+gam0 <- gam(
+  presence ~ 
+    s(sst)  + s(bathy) + s(roughness) + s(vml) + s(uo) + s(vo) + s(EKE) +
+    s(chl) + s(chl_3) + s(ice_conc) +
+    s(id, bs = "re"), 
+  family = binomial,
+  method = 'ML',
+  data = tracks_vars_behav)
+summary(gam0)
+
+gam1 <- gam(
+  presence ~ 
+    s(sst)  + s(bathy) + s(roughness) + s(vml) + s(uo) + s(vo) +
+    s(chl) + s(chl_3) + s(ice_conc) +
+    s(id, bs = "re"), 
+  family = binomial,
+  method = 'ML',
+  data = tracks_vars_behav)
+
+summary(gam1)
+
+gam1_reml <- gam(
+  presence ~ 
+    s(sst)  + s(bathy) + s(roughness) + s(vml) + s(uo) + s(vo) +
+    s(chl) + s(chl_3) + s(ice_conc) +
+    s(id, bs = "re"), 
+  family = binomial,
+  method = 'REML',
+  data = tracks_vars_behav)
+
+summary(gam1_reml)
+
+AIC(gam0, gam1) #gam1 lower
+
+gam.check(gam1)
+
+plot(gam1, scheme = 1, shade = TRUE, scale = 0)
+
+
+gam1_k <- gam(
+  presence ~ 
+    s(sst, k=15)  + s(bathy, k=15) + s(roughness, k=15) + s(vml, k=15) + s(uo, k=15) + s(vo, k=15) +
+    s(chl, k=15) + s(chl_3, k=15) + s(ice_conc, k=15) +
+    s(id, bs = "re"), 
+  family = binomial,
+  method = 'ML',
+  data = tracks_vars_behav)
+
+gam.check(gam1_k)
+
+AIC(gam1, gam1_k) #k is lower 
+
+gam1_k2 <- gam(
+  presence ~ 
+    s(sst)  + s(bathy, k=15) + s(roughness) + s(vml) + s(uo) + s(vo) +
+    s(chl, k=15) + s(chl_3, k=15) + s(ice_conc, k=15) +
+    s(id, bs = "re"), 
+  family = binomial,
+  method = 'ML',
+  data = tracks_vars_behav)
+
+gam.check(gam1_k2)
+
+AIC(gam1_k, gam1_k2) #gam1_k lower
+
+gam1_k3 <- gam(
+  presence ~ 
+    s(sst)  + s(bathy, k=25) + s(roughness) + s(vml) + s(uo) + s(vo) +
+    s(chl, k=25) + s(chl_3, k=25) + s(ice_conc, k=25) +
+    s(id, bs = "re"), 
+  family = binomial,
+  method = 'ML',
+  data = tracks_vars_behav)
+
+gam.check(gam1_k3)
+
+gam1_k4 <- gam(
+  presence ~ 
+    s(sst)  + s(bathy, k=20) + s(roughness) + s(vml) + s(uo) + s(vo) +
+    s(chl, k=20) + s(chl_3, k=20) + s(ice_conc, k=20) +
+    s(id, bs = "re"), 
+  family = binomial,
+  method = 'ML',
+  data = tracks_vars_behav)
+
+gam.check(gam1_k4)
+
+AIC(gam1_k, gam1_k3, gam1_k4) #k3 lowest 
+
+#REML
+gam1_k3_reml <- gam(
+  presence ~ 
+    s(sst)  + s(bathy, k=25) + s(roughness) + s(vml) + s(uo) + s(vo) +
+    s(chl, k=25) + s(chl_3, k=25) + s(ice_conc, k=25) +
+    s(id, bs = "re"), 
+  family = binomial,
+  method = 'REML',
+  data = tracks_vars_behav)
+
+summary(gam1_k3_reml)
+gam.check(gam1_k3_reml)
+
+par(mfrow = c(3, 4))
+plot(gam1_k3_reml, scheme = 1, shade = TRUE, scale = 0, page = 1, rug = TRUE)
+
+#plot GAM with points
+library(marginaleffects)
+
+plot_predictions(gam1_k3_reml, condition = c("vml"))
+#Estimate is the predicted probability that the response equals 1 (e.g. 0.2 is 20%)
+
+
+
+``` 
+
+gam 2 plot
+```{r}
+plot(gam1_k3_reml, scheme = 1, shade = TRUE, scale = 0)
+
+plot(gam1_k3_reml, scheme = 1, shade = TRUE, rug = TRUE, scale = 0, page = 1)
+```
+
+getting insets 
+```{r}
+#SST
+# draw the main plot for one smooth term
+plot(gam1_k3_reml, select = 1, scheme = 1, shade = TRUE, rug = TRUE, scale = 0)
+
+# draw a dashed grey box around the region to zoom into
+# (in the main plot's data coordinates)
+rect(xleft = -1.8, xright = 3.8, ybottom = -5, ytop = 5,
+     border = "grey60", lty = 2, lwd = 1.5)
+
+# draw the inset manually
+par(fig = c(0.18, 0.5, 0.35, 0.6), new = TRUE, mai = c(0.05, 0.05, 0, 0))
+
+plot(gam1_k3_reml, select = 1, se = FALSE, rug = FALSE, scale = 0,
+     xlim = c(-2, 4), ylim = c(-5, 5),
+     xlab = "", ylab = "", main = "",
+     axes = FALSE)  # suppress default axes entirely
+
+axis(1, col = "grey50", col.axis = "grey50", col.ticks = "grey50", cex.axis = 0.6)  # x-axis
+axis(2, col = "grey50", col.axis = "grey50", col.ticks = "grey50", cex.axis = 0.6)  # y-axis
+
+
+#BATHY
+plot(gam1_k3_reml, select = 2, scheme = 1, shade = TRUE, rug = TRUE, scale = 0)
+
+rect(xleft = -500, xright = 0, ybottom = -2, ytop = 8,
+     border = "grey60", lty = 2, lwd = 1.5)
+
+par(fig = c(0.5, 0.8, 0.58, 0.8), new = TRUE, mai = c(0.01, 0.01, 0, 0), mgp = c(1, 0.4, 0))
+
+plot(gam1_k3_reml, select = 2, se = FALSE, rug = FALSE, scale = 0,
+     xlim = c(-500, 0), ylim = c(-2, 8),
+     xlab = "", ylab = "", main = "",
+     axes = FALSE) 
+
+axis(1, col = "grey50", col.axis = "grey50", col.ticks = "grey50", cex.axis = 0.6)  # x-axis
+axis(2, col = "grey50", col.axis = "grey50", col.ticks = "grey50", cex.axis = 0.6)  # y-axis
+
+
+#VML
+plot(gam1_k3_reml, select = 4, scheme = 1, shade = TRUE, rug = TRUE, scale = 0)
+
+rect(xleft = 0, xright = 200, ybottom = -5, ytop = 5,
+     border = "grey60", lty = 2, lwd = 1.5)
+
+par(fig = c(0.2, 0.5, 0.32, 0.55), new = TRUE, mai = c(0.01, 0.01, 0, 0), mgp = c(1, 0.4, 0))
+
+plot(gam1_k3_reml, select = 4, se = FALSE, rug = FALSE, scale = 0,
+     xlim = c(0, 200), ylim = c(-5, 5),
+     xlab = "", ylab = "", main = "",
+     axes = FALSE) 
+
+axis(1, col = "grey50", col.axis = "grey50", col.ticks = "grey50", cex.axis = 0.6)  # x-axis
+axis(2, col = "grey50", col.axis = "grey50", col.ticks = "grey50", cex.axis = 0.6)  # y-axis
+
+
+#UO
+plot(gam1_k3_reml, select = 5, scheme = 1, shade = TRUE, rug = TRUE, scale = 0)
+
+rect(xleft = -0.2, xright = 0.25, ybottom = -1.5, ytop = 1,
+     border = "grey60", lty = 2, lwd = 1.5)
+
+par(fig = c(0.35, 0.6, 0.35, 0.55), new = TRUE, mai = c(0.01, 0.01, 0, 0), mgp = c(1, 0.4, 0))
+
+plot(gam1_k3_reml, select = 5, se = FALSE, rug = FALSE, scale = 0,
+     xlim = c(-0.2, 0.3), ylim = c(-1.5, 1),
+     xlab = "", ylab = "", main = "",
+     axes = FALSE) 
+
+axis(1, col = "grey50", col.axis = "grey50", col.ticks = "grey50", cex.axis = 0.6)  # x-axis
+axis(2, col = "grey50", col.axis = "grey50", col.ticks = "grey50", cex.axis = 0.6)  # y-axis
+
+
+#VO
+plot(gam1_k3_reml, select = 6, scheme = 1, shade = TRUE, rug = TRUE, scale = 0)
+
+rect(xleft = -0.1, xright = 0.25, ybottom = -1, ytop = 1,
+     border = "grey60", lty = 2, lwd = 1.5)
+
+par(fig = c(0.4, 0.65, 0.35, 0.53), new = TRUE, mai = c(0.01, 0.01, 0, 0), mgp = c(1, 0.4, 0))
+
+plot(gam1_k3_reml, select = 6, se = FALSE, rug = FALSE, scale = 0,
+     xlim = c(-0.1, 0.3), ylim = c(-1, 1),
+     xlab = "", ylab = "", main = "",
+     axes = FALSE) 
+
+axis(1, col = "grey50", col.axis = "grey50", col.ticks = "grey50", cex.axis = 0.6)  # x-axis
+axis(2, col = "grey50", col.axis = "grey50", col.ticks = "grey50", cex.axis = 0.6)  # y-axis
+
+
+# reset par for next plot
+par(fig = c(0, 1, 0, 1), mai = c(1.02, 0.82, 0.82, 0.42))
+```
+
+
+
+
+
+

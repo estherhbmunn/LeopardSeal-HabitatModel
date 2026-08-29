@@ -1,0 +1,143 @@
+---
+title: "ROC"
+output: html_document
+---
+install
+```{r}
+
+library(pROC)
+
+```
+
+ENV glmm
+```{r}
+library(lme4)
+
+#my model
+glmm3 <- glmer (presence ~ bathy + sst + uo + roughness + chl + chl_3 + vml + (1 | id),
+  data = tracks_vars_behav,
+  family = binomial)
+
+#to handle difference in rows due to NAs
+used_rows <- as.numeric(rownames(model.frame(glmm3)))
+
+#create column
+tracks_vars_behav$glmm_pred <- NA
+
+#predict
+tracks_vars_behav$glmm_pred[used_rows] <- predict(
+  glmm3,
+  type = "response",
+  re.form = NA)
+
+#run the ROC
+roc_glmm <- roc(
+  response = tracks_vars_behav$presence[used_rows],
+  predictor = tracks_vars_behav$glmm_pred[used_rows]
+)
+
+plot(roc_glmm)
+auc(roc_glmm) # 0.9074
+
+```
+
+GAM 
+```{r}
+library(mgcv)
+
+#my model
+gam_pred <- gam(
+  presence ~ 
+    s(sst)  + s(bathy) + s(roughness) + s(vml) + s(uo) + s(vo) +
+    s(chl) + s(chl_3) + s(ice_conc),
+  family = binomial,
+  method = 'REML',
+  data = tracks_vars_behav)
+
+#to handle difference in rows due to NAs
+used_rows <- as.numeric(rownames(model.frame(gam_pred)))
+
+#create column
+tracks_vars_behav$gam_pred <- NA
+
+#predict
+tracks_vars_behav$gam_pred[used_rows] <- predict(
+  gam_pred,
+  type = "response",
+  re.form = NA)
+
+#run the ROC
+roc_gampred <- roc(
+  response = tracks_vars_behav$presence[used_rows],
+  predictor = tracks_vars_behav$gam_pred[used_rows])
+
+plot(roc_gampred)
+auc(roc_gampred) # 0.9532
+
+```
+
+GAM 2
+```{r}
+
+gam2 <- gam(
+  presence ~ 
+    s(sst)  + s(bathy, k=25) + s(roughness) + s(vml) + s(uo) + s(vo) +
+    s(chl, k=25) + s(chl_3, k=25) + s(ice_conc, k=25),
+  family = binomial,
+  method = 'REML',
+  data = tracks_vars_behav)
+
+#to handle difference in rows due to NAs
+used_rows <- as.numeric(rownames(model.frame(gam2)))
+
+#create column
+tracks_vars_behav$gam2 <- NA
+
+#predict
+tracks_vars_behav$gam2[used_rows] <- predict(
+  gam2,
+  type = "response",
+  re.form = NA)
+
+#run the ROC
+roc_gam2 <- roc(
+  response = tracks_vars_behav$presence[used_rows],
+  predictor = tracks_vars_behav$gam2[used_rows])
+
+plot(roc_gam2)
+auc(roc_gam2) # 0.9574
+
+
+
+```
+
+Average
+```{r}
+library(terra)
+
+#model
+pred_avg <- (prediction_rast_env + prediction_rast_env_gam_k) / 2
+
+# convert your sf points to a SpatVector for terra
+pts_vect <- vect(tracks_vars_behav)
+
+# make sure CRS matches the raster - reproject if needed
+pts_vect <- project(pts_vect, crs(pred_avg))
+
+# extract predicted value from the FIT layer (assuming layer 1 = fit, layer 2 = SE)
+extracted <- terra::extract(pred_avg[[1]], pts_vect)
+
+# attach to your dataframe
+tracks_vars_behav$avg_pred <- extracted[, 2]  # column 2 = the extracted value; column 1 is an ID column terra adds
+
+roc_avg <- roc(
+  response  = tracks_vars_behav$presence,
+  predictor = tracks_vars_behav$avg_pred
+)
+
+auc(roc_avg) #0.9323
+
+roc.test(roc_glmm, roc_avg)
+roc.test(roc_gam2, roc_avg)   # your k=25 GAM's roc object - use whatever you named it
+```
+

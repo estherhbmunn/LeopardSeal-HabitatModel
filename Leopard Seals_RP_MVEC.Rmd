@@ -1,0 +1,291 @@
+---
+title: "LeopardSeals_RP_MVEC"
+output: html_document
+date: "2026-03-05"
+---
+
+```{r setup, include=FALSE}
+
+# Install aniMotum from Jonsen's R-universe repository
+
+library(TMB)
+library(RcppEigen)
+library(nlme)
+library(spatstat.explore)
+
+# install.packages("aniMotum", repos = c("https://ianjonsen.r-universe.dev", "https://cloud.r-project.org"))
+```
+
+```{r import data}
+
+library(aniMotum)
+ls11.raw <- read.csv("~/MVEC/Reasearch Project/LeopardSealHabitatModel-main/data/173711_solved-FastGPS.csv") # Imports the raw tracking data
+
+```
+
+Let's start by taking a look at the raw tracking data.
+
+```{r}
+library(ggplot2)
+library(rnaturalearth)
+
+#install.packages("pak")
+#pak::pkg_install("ropensci/rnaturalearthhires")
+
+# Get the basemap data for the world (for the blue fin tuna?)
+bg <- ne_countries(scale = "large",returnclass = "sf")
+# ne_countries  pulls country boundary data from the Natural Earth dataset. 
+# scale = "large"  specifies the level of detail.
+# returnclass = "sf" tells the function to return the data as an sf object (from the sf package)
+```
+
+```{r}
+# Create map for the Southern elephant seal data
+p1 = ggplot()+
+  
+  # Sets the basemap
+  geom_sf(data = bg)+
+  coord_sf(xlim = range(ls11.raw$Longitude, na.rm = TRUE), 
+           ylim = range(ls11.raw$Latitude, na.rm = TRUE), 
+        #expand = FALSE to bring the plot down to just the points  
+        )+ 
+  
+  # Plots the tracks as lines and points, using the same colours for each individual
+  geom_path(data = ls11.raw, 
+            aes(x=Longitude,y=Latitude,group=Name,color=Name), 
+            alpha = 1.2)+
+  geom_point(data = ls11.raw, 
+             aes(x=Longitude,y=Latitude,group=Name,fill=Name),
+             alpha = 0.7, shape=21, size = 2)
+
+p1
+```
+
+To correct these data, we are going to use a State-Space Model (SSM) as implemented in *aniMotum*. SSMs are powerful tools for conducting quality control of and making behavioural inference from animal tracking data (noisy observations). The SSM estimate true location and behaviour states, separating ecologically meaningful signals from the noise of sensor measurements.
+
+For the first attempt, let's try fitting the model using the simpler model, a random walk.
+
+```{r}
+library(dplyr)
+
+#keep only needed columns
+ls11.clean <- ls11.raw[, c("Name", "Date", "Longitude", "Latitude")]
+
+# rename columns for ssm requirements
+ls11.clean <- ls11.clean %>%
+  rename(
+    lon = Longitude,
+    lat = Latitude,
+    id = Name,
+    date = Date )
+
+#remove NAs
+ls11.clean <- ls11.clean[!is.na(ls11.clean$lon) & !is.na(ls11.clean$lat), ] 
+
+#turn Date from character to POSIXct 
+ls11.clean$date <- as.POSIXct(ls11.clean$date) 
+
+# Fit a SSM using a Random Walk 
+ls11.fit.1 <- fit_ssm(ls11.clean, 
+               vmax= 4, 
+               model = "rw", # Use the random walk model
+               time.step = 6, # Get a location every 6 hours 
+               control = ssm_control(verbose = 0))
+
+
+```
+
+correlated random walk
+
+```{r}
+
+ls11.fit.2 <- fit_ssm(ls11.clean, 
+               vmax= 4, 
+               model = "crw", # Use the correlated random walk model
+               time.step = 6, 
+               control = ssm_control(verbose = 0))
+```
+
+movement persistence model
+
+```{r}
+ls11.fit.3 <- fit_ssm(ls11.clean, 
+               vmax= 4, 
+               model = "mp", # Use the correlated random walk model
+               time.step = 6, 
+               control = ssm_control(verbose = 0))
+```
+
+To visualise the differences, let's extract the fitted data from the output and plot the tracks for comparisons
+
+```{r}
+library(grid)
+library(gridExtra)
+
+# Extract the data for each one of the fitted models for elephant seals
+ls11.out.1 <- grab(ls11.fit.1, what = "predicted", as_sf = FALSE)
+ls11.out.2 <- grab(ls11.fit.2, what = "predicted", as_sf = FALSE)
+ls11.out.3 <- grab(ls11.fit.3, what = "predicted", as_sf = FALSE)
+```
+
+Now that we have run the models, let's plot the data to see how they performed
+
+```{r}
+# Create the maps for each model and then add them all in the same figure
+
+# Model 1 - Random walk
+
+ls11.m1 = ggplot()+
+  
+  # Sets the basemap
+  geom_sf(data = bg)+
+  coord_sf(xlim = range(ls11.out.1$lon, na.rm = TRUE), 
+           ylim = range(ls11.out.1$lat, na.rm = TRUE), 
+           expand = FALSE)+
+  
+  # Plots the tracks as lines and points, using the same colours for each individual
+  geom_path(data = ls11.out.1, 
+            aes(x=lon,y=lat,group=id,color=id), 
+            alpha = 1.2)+
+  geom_point(data = ls11.out.1, 
+             aes(x=lon,y=lat,group=id,fill=id),
+             alpha = 0.7, shape=21, size = 2)
+
+ls11.m1 <- ls11.m1 + ggtitle('Fit using a Random walk - Leopard seals')
+
+```
+
+Second model - Correlated Random Walk
+
+```{r}
+
+# Model 2 - Correlated Random Walk
+
+ls11.m2 = ggplot()+
+  
+  # Sets the basemap
+  geom_sf(data = bg)+
+  coord_sf(xlim = range(ls11.out.2$lon, na.rm = TRUE), 
+           ylim = range(ls11.out.2$lat, na.rm = TRUE), 
+           expand = FALSE)+
+  
+  # Plots the tracks as lines and points, using the same colours for each individual
+  geom_path(data = ls11.out.2, 
+            aes(x=lon,y=lat,group=id,color=id), 
+            alpha = 1.2)+
+  geom_point(data = ls11.out.2, 
+             aes(x=lon,y=lat,group=id,fill=id),
+             alpha = 0.7, shape=21, size = 2)
+
+ls11.m2 <- ls11.m2 + ggtitle('Fit using a Correlated Random walk - Leopard Seal')
+
+```
+
+Finally, let's run the tracks through the Movement Persistence Model
+
+```{r}
+
+# Model 3 - Movement Persistence Model
+
+ls11.m3 = ggplot()+
+  
+  # Sets the basemap
+  geom_sf(data = bg)+
+  coord_sf(xlim = range(ls11.out.3$lon, na.rm = TRUE), 
+           ylim = range(ls11.out.3$lat, na.rm = TRUE), 
+           expand = FALSE)+
+  
+  # Plots the tracks as lines and points, using the same colours for each individual
+  geom_path(data = ls11.out.3, 
+            aes(x=lon,y=lat,group=id,color=id), 
+            alpha = 1.2)+
+  geom_point(data = ls11.out.3, 
+             aes(x=lon,y=lat,group=id,fill=id),
+             alpha = 0.7, shape=21, size = 2)
+
+ls11.m3 <- ls11.m3 + ggtitle('Fit using a Movement Persistence model - Leopard Seal')
+
+```
+
+Create the figure comparing the outputs
+
+```{r}
+
+library(grid)
+library(gridExtra)
+
+# Create a figure with the 4 maps
+grid.arrange(p1, ls11.m1, ls11.m2, ls11.m3, nrow = 2, ncol = 2)
+
+ls11.m3
+```
+
+By comparing the data to the raw tracks, we can see how the *aniMotum* package not only dealt with the locations with error, but it also corrected the locations that were on land (which are impossible for marine vertebrates) and produced a track with locations interpolated at a regular interval and it provides an estimate of the uncertainty for each location.
+
+Now that we have the final corrected model (mp), let's use that output to investigate more about LS movement patterns. We need to use the package *move* to calculate distances between points, so that we can estimate things such as total distance traveled and transit rate.
+
+```{r}
+#install.packages('move2')
+library(move)
+
+# Make sure that the data are sorted by animal ID and in the correct chronological order 
+# Using out.3 as that's the output from the mp model to create a move object
+
+move.ls11 <- move(x=ls11.out.3$lon, 
+                  y=ls11.out.3$lat,
+                  time=ls11.out.3$date,
+                  proj=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84"), 
+                  animal=ls11.out.3$id) 
+
+# Plot the data to check we loaded the correct data
+plot(move.ls11, xlab="Longitude", ylab="Latitude", type="l", pch=16, lwd=0.5)
+
+# If we wanted to check that the interpolation is every 3 hours, as we did when running the SSM, we can check as follows
+steps.ls11 <-timeLag(move.ls11, units="hours")
+
+# Now, the next step is to calculate the distance between locations. Because the units are in degrees (lat, lon), the package move returns the distance in meters
+dist.ls11 <- distance(move.ls11)
+
+```
+
+Now that we have calculated some basic track metrics, let's analyse the data
+
+```{r}
+# Calculate the mean step distance in meters. As these data are interpolated, the step length is giving us transit rate in m/3 hours
+sapply(dist.ls11, mean)
+
+```
+
+To compare with the transit rate calculated by the package *move*, we can estimate the speed and mean
+
+```{r}
+speed.ls11 <- speed(move.ls11) # Speed (or transit rate) in m/s
+
+sapply(speed.ls11, mean) # # Calculate the mean speed in meters/second
+```
+
+Another variable that the package *move* allows us to estimate is the heading (also known as azimuth or direction of travel/movement) of trajectory. North is represented by 0
+
+```{r}
+
+angle.ls11 <- angle(move.ls11) # Calculate the heading in degrees
+
+sapply(angle.ls11, median) # Calculate the median heading in degrees
+```
+
+We need to calculate the length of the track (total distance travelled, in km)
+
+```{r}
+
+t.dist.ls11 <- sapply(dist.ls11, sum) # Calculates the total distance covered by individual, in meters
+
+sapply(t.dist.ls11, "/" , 1000) # Transforms the distance to km
+
+```
+
+```{r}
+leopardseal_all_tracks_mp$g_bin <- ifelse(leopardseal_all_tracks_mp$g > 0.5, 1, 0)
+
+table(leopardseal_all_tracks_mp$g_bin)
+```
+

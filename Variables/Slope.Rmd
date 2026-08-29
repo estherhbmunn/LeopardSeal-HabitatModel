@@ -1,0 +1,23 @@
+---
+title: "Slope"
+output: html_document
+---
+
+```{r}
+library(terra)
+
+bathy <- rast("gebco_2026_n-44.0_s-75.0_w-95.0_e-25.0.nc")
+
+slope <- terrain(bathy, "slope")
+
+tracks_vect <- vect(tracks_vars_behav)
+
+tracks_vars_behav$slope <- NA_real_
+
+vals <- terra::extract(slope, tracks_vect)
+tracks_vars_behav$slope <- vals[, 2]
+
+saveRDS(tracks_vars_behav, "tracks_vars_behav.rds")
+
+```
+

@@ -1,0 +1,22 @@
+---
+title: "Roughness"
+output: html_document
+---
+
+```{r}
+library(terra)
+
+bathy <- rast("gebco_2026_n-44.0_s-75.0_w-95.0_e-25.0.nc")
+
+roughness <- terrain(bathy, "roughness")
+
+tracks_vect <- vect(tracks_vars_behav)
+
+tracks_vars_behav$roughness <- NA_real_
+
+vals <- terra::extract(roughness, tracks_vect)
+tracks_vars_behav$roughness <- vals[, 2]
+
+saveRDS(tracks_vars_behav, "tracks_vars_behav.rds")
+
+```

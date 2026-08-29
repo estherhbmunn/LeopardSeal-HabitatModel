@@ -1,0 +1,70 @@
+---
+title: "cont.shelf"
+output: html_document
+---
+
+set up
+```{r}
+
+tracks <- tracks_vars_behav
+
+bathy <- rast("gebco_2026_n-44.0_s-75.0_w-95.0_e-25.0.nc")
+
+```
+
+plot
+```{r}
+library(terra)
+library(tidyterra)
+
+bath.plot =
+ggplot() +
+geom_spatraster(data = bathy)
+
+```
+
+shelf break shp
+```{r}
+library(sf)
+library(ggplot2)
+
+sb <- st_read("~/2026_Project/Variables/Shelf_break_ANTARCTICA_DAmblas/Shelf_break_Antarctica_DAmblas.shp")
+
+ggplot() +
+  geom_sf(data = sb, colour = "blue", fill = NA, linewidth = 0.4) +
+  theme_minimal()
+
+sb <- st_transform(sb, 4326)
+
+#crop to my range
+sb_crop <- st_crop(
+  sb,
+  xmin = -94, xmax = -24,
+  ymin = -75,  ymax = -44
+)
+
+#plot
+bath.plot +
+  geom_sf(data=sb_crop)
+
+
+```
+
+Distance
+```{r}
+
+#tracks <- st_as_sf(tracks, coords = c("lon", "lat"), crs = 4326, remove = FALSE) #make sf geometry column
+
+tracks$dist_shelf <- as.numeric(st_distance(tracks, sb_crop)) #distance to shelf break
+```
+
+
+select points 0-500m depth (on shelf)
+```{r}
+
+tracks$dist_shelf[tracks$bathy >= -500] <- tracks$dist_shelf[tracks$bathy >= -500] * -1
+
+saveRDS(tracks, "tracks_vars_behav.rds")
+
+```
+

@@ -1,0 +1,316 @@
+---
+title: "CRW"
+output: html_document
+date: "2026-05-28"
+---
+
+```{r}
+
+library(move)
+library(sf)
+library(rnaturalearth)
+library(CircStats)
+library(rnaturalearthdata)
+
+out_mp <- leopardseal_all_tracks_mp #this is extracted data from fitted move persistence model for all tracks
+
+move.ls <- move(
+  x      = out_mp$lon,
+  y      = out_mp$lat,
+  time   = out_mp$date,
+  proj   = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84"),
+  animal = out_mp$id
+)
+
+#calculate step lengths
+dist.ls <- distance(move.ls)  # step lengths in metres, per individual
+
+# calculate turning angles
+ta.ls <- turnAngleGc(move.ls)  # turning angles in degrees, per individual
+
+# Land mask
+bg <- ne_countries(scale = "medium", returnclass = "sf")
+
+
+# Run CRW simulations
+
+n_sims <- 2   # simulated tracks per individual (up to 10k)
+
+set.seed(42) #so random numbers are reproducible (dont use too often)
+
+all_pseudo <- list() #make empty dataset
+
+
+#Loop 
+# [[[[
+for (ind_id in namesIndiv(move.ls)) {
+  cat("Processing:", ind_id, "\n") #so you can see what seal is being processed
+  ind_move <- move.ls[[ind_id]] 
+  
+  #Step lengths from dist.ls object
+  sl <- dist.ls[[ind_id]] / 1000 # metres into km 
+  sl <- sl[sl > 0] #remove if step length is 0 
+
+  #Turning angles (degrees) from ta.ls
+  ta <- ta.ls[[ind_id]] 
+  ta <- ta[!is.na(ta)] #need 3 steps to get an angle, so first and last have none, nas removed
+
+  if (length(sl) < 5 || length(ta) < 5) {
+    warning("Skipping ", ind_id, " — too few steps"); next  } #if track too short then next 
+
+  # Fit Gamma distribution to step lengths
+  sl_mean  <- mean(sl);  sl_var <- var(sl)
+  sl_shape <- sl_mean^2 / sl_var
+  sl_rate  <- sl_mean   / sl_var #shape and rate describe how seal moves (eg. short vs fast steps) 
+
+  # Fit von Mises distribution to turning angles (normal distribution for circles)
+  ta_rad   <- ta * pi / 180
+  ta_kappa <- 1 / (1 - mean(cos(ta_rad))) #kappa describes directionality of seal
+  ta_mu    <- atan2(mean(sin(ta_rad)), mean(cos(ta_rad)))
+
+  # Starting location: first real fix for this individual 
+  start_lon <- coordinates(ind_move)[1, 1]
+  start_lat <- coordinates(ind_move)[1, 2] #extracts first point so all tacks start here
+  n_steps   <- n.locs(ind_move) - 1 #all simulated tracks have same number as real track (-1 because no first step) Need this ??? 
+
+  # Simulate n_sims tracks 
+  sim_pts <- vector("list", n_sims) #empty list of the right length
+  pb <- txtProgressBar(min = 0, max = n_sims, style = 3) #gives progress bar with percent (style 3)
+
+  for (sim in seq_len(n_sims)) { #outer loop, so repeats all of that n_sims times eg. 10k
+    lons    <- numeric(n_steps + 1);  lats <- numeric(n_steps + 1) #creating empty vectors
+    lons[1] <- start_lon;             lats[1] <- start_lat #picks random starting direction
+    bearing <- runif(1, -pi, pi)
+
+    for (s in seq_len(n_steps)) {
+      placed <- FALSE
+      for (attempt in seq_len(30)) { #land rejection loop, will try 30 times to find sea then seal stays there
+        sl_draw <- rgamma(1, shape = sl_shape, rate = sl_rate)
+        ta_draw <- rvm(1, mean = ta_mu, k = ta_kappa)
+        bearing <- bearing + ta_draw # draws step length from gamma dist and angle from vonM dist, each step depends on last 
+
+        new_lon <- lons[s] + (sl_draw / (111.32 * cos(lats[s] * pi / 180))) * cos(bearing)
+        new_lat <- lats[s] + (sl_draw / 110.57) * sin(bearing) #converts step length and direction into new lat lon
+
+        pt      <- st_sfc(st_point(c(new_lon, new_lat)), crs = 4326)
+        on_land <- any(st_intersects(pt, bg, sparse = FALSE)) #rejects points on land
+
+        if (!on_land) {
+          lons[s + 1] <- new_lon;  lats[s + 1] <- new_lat
+          placed <- TRUE;          break    }  }
+      if (!placed) { lons[s + 1] <- lons[s];  lats[s + 1] <- lats[s] } }
+
+    sim_pts[[sim]] <- data.frame(lon = lons[-1], lat = lats[-1]) #stores them 
+    setTxtProgressBar(pb, sim) }
+  close(pb)
+
+  pseudo_df               <- do.call(rbind, sim_pts)
+  pseudo_df$individual_id <- ind_id
+  all_pseudo[[ind_id]]    <- pseudo_df
+  cat("\n  Done —", nrow(pseudo_df), "pseudo-absence points\n") } #stacks each track per indiv into the df
+# ]]]]
+
+
+
+# Save results
+pseudo_absences <- do.call(rbind, all_pseudo)
+write.csv(pseudo_absences, "pseudo_absences.csv", row.names = FALSE)
+cat("\nSaved pseudo_absences.csv —", nrow(pseudo_absences), "total points\n")
+
+
+```
+
+Transit rate
+```{r}
+
+library(move)
+
+tracks_b <- tracks_vars_behav %>%  filter(presence == 1)
+
+
+
+move.ls <- move(
+  x      = leopardseal_all_tracks_mp$lon,
+  y      = leopardseal_all_tracks_mp$lat,
+  time   = leopardseal_all_tracks_mp$date,
+  proj   = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84"),
+  animal = leopardseal_all_tracks_mp$id)
+
+# Plot the data to check we loaded the correct data
+plot(move.ls, xlab="Longitude", ylab="Latitude", type="l", pch=16, lwd=0.5)
+
+#distance
+# calculate the distance between locations. Because the units are in degrees (lat, lon), the package move returns the distance in meters
+dist.ls <- distance(move.ls)
+
+# Calculate the mean step distance in meters. As these data are interpolated, the step length is giving us transit rate in m/3 hours per id
+sapply(dist.ls, mean)
+
+hist(dist.ls$X173719)
+
+#speed
+speed.ls <- speed(move.ls) # Speed (or transit rate) in m/s
+
+sapply(speed.ls, mean) # Calculate the mean speed in meters/second per id
+
+hist(speed.ls$X173713)
+
+#convert dist to df
+
+step <- do.call(rbind, lapply(names(dist.ls), function(id) {
+  data.frame(
+    id = id,
+    step_length = dist.ls[[id]]
+  )}))
+
+step$id <- sub("^X", "", step$id) #so ids match 
+
+step$step_number <- ave(step$step_length, step$id, FUN = seq_along)
+
+leopardseal_all_tracks_mp$step_number <- ave(leopardseal_all_tracks_mp$id, leopardseal_all_tracks_mp$id, FUN = seq_along)
+
+step$step_number <- step$step_number + 1 #shift along 
+
+#merge
+leopardseal_mp_steps <- merge(
+  leopardseal_all_tracks_mp,
+  step[, c("id", "step_number", "step_length")],
+  by = c("id", "step_number"),
+  all.x = TRUE)
+
+leopardseal_mp_steps$step_number <- as.numeric(leopardseal_mp_steps$step_number)
+leopardseal_mp_steps$step_length <- as.numeric(leopardseal_mp_steps$step_length)
+
+leopardseal_mp_steps$step_length_km <- leopardseal_mp_steps$step_length / 1000
+
+hist(leopardseal_mp_steps$step_length_km,
+     breaks = 50,
+     xlim = c(0, max(43, na.rm = TRUE)))
+
+saveRDS(leopardseal_mp_steps, "leopardseal_mp_steps.rds")
+
+
+#merge with tracks df
+
+tracks_b <- merge(
+  tracks_b,
+  leopardseal_mp_steps[, c("id", "lon","lat", "step_length", "step_length_km", "step_number")],
+  by = c("id", "lon", "lat"),
+  all.x = TRUE)
+
+
+saveRDS(tracks_b, "tracks_b.rds")
+
+
+hist(log10(tracks_b$step_length),
+     breaks = 50)
+
+boxplot(tracks_b$step_length_km)
+hist(tracks_b$step_length_km)
+
+
+#tracks_b <- tracks_b[, !names(tracks_b) %in% c("change_bin")]
+
+```
+
+plot
+```{r}
+library(sf)
+library(tidyverse)
+library(terra)
+library(tidyterra)
+library(colorspace)
+library(rnaturalearth)
+
+bg <- ne_countries(scale = "large",returnclass = "sf")
+
+bb <- st_bbox(tracks_b) #bounding box of my data to set the plot to
+
+# all tracks
+ggplot() +
+  geom_sf(data = bg) +
+  geom_sf(data = tracks_b, aes(colour = id)) +
+  coord_sf(
+    xlim = c(bb["xmin"], bb["xmax"]),
+    ylim = c(bb["ymin"], bb["ymax"])) +
+  scale_fill_hypso_d('wiki-2.0_hypso') 
+
+#gradient
+ggplot() +
+  geom_sf(data = bg) +
+  geom_sf(data = tracks_b , aes(colour=step_length)) +
+  coord_sf(
+    xlim = c(bb["xmin"], bb["xmax"]),
+    ylim = c(bb["ymin"], bb["ymax"])) +
+  scale_colour_viridis_c()
+
+#binary 
+tracks_b$step_bin <- ifelse(tracks_b$step_length > 20000, 1, 0)
+
+
+# just one track 
+ggplot() +
+  geom_sf(data = bg) +
+  geom_sf(data = tracks_b[tracks_b$id == 173717, ] , aes(colour=step_length)) +
+  coord_sf(
+    xlim = c(bb["xmin"], bb["xmax"]),
+    ylim = c(bb["ymin"], bb["ymax"])) +
+    scale_colour_viridis_c()
+   # indiv has grouping around coast and then movement out towards island
+
+
+
+hist(tracks_b$step_length,
+     breaks = 50,
+     xlab = "Step length (m)",
+     main = "Step length distribution")
+
+
+
+# track with joining lines 
+
+library(dplyr)
+
+track <- tracks_b |>
+  filter(id == 173717) |>
+  arrange(date)
+
+track_line <- track |>
+  summarise(do_union = FALSE) |>
+  st_cast("LINESTRING")
+
+ggplot() +
+  geom_sf(data = bg) +
+  geom_sf(data = track_line, colour = "black", linewidth = 0.6) +
+  geom_sf(data = track, 
+          aes(colour = step_length), size = 2) +
+    coord_sf(
+    xlim = c(bb["xmin"], bb["xmax"]),
+    ylim = c(bb["ymin"], bb["ymax"]))+
+  scale_colour_viridis_c()
+
+
+# all tracks with binary
+ggplot() +
+  geom_sf(data = bg) +
+  geom_sf(data = tracks_b, aes(colour = step_bin)) +
+  coord_sf(
+    xlim = c(bb["xmin"], bb["xmax"]),
+    ylim = c(bb["ymin"], bb["ymax"]))
+
+
+# check bin on other indivs
+
+ggplot() +
+  geom_sf(data = bg) +
+  geom_sf(data = tracks_b[tracks_b$id == 173717, ] , aes(colour=step_bin)) +
+  coord_sf(
+    xlim = c(bb["xmin"], bb["xmax"]),
+    ylim = c(bb["ymin"], bb["ymax"]))
+
+
+
+```
+
+
+
