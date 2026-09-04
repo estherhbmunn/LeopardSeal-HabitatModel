@@ -11,9 +11,11 @@ library(sf)
 # unzip("/home2/ISAD/em1105/2026_Project/Variables/gshhg-shp-2.3.7.zip",
 #     exdir = "/home2/ISAD/em1105/2026_Project/Variables/gshhg")
 
-coast_L1 <- st_read("/home2/ISAD/em1105/2026_Project/Variables/gshhg/GSHHS_shp/f/GSHHS_f_L1.shp")
+Sys.setenv(SHAPE_RESTORE_SHX = "YES")
 
-coast_L5 <- st_read("/home2/ISAD/em1105/2026_Project/Variables/gshhg/GSHHS_shp/f/GSHHS_f_L5.shp")
+coast_L1 <- st_read("/home2/ISAD/em1105/2026_Project/Variables/Variables_data/gshhg/GSHHS_shp/f/GSHHS_f_L1.shp")
+
+coast_L5 <- st_read("/home2/ISAD/em1105/2026_Project/Variables/Variables_data/gshhg/GSHHS_shp/f/GSHHS_f_L5.shp")
 
 coast <- rbind(coast_L1, coast_L5)
 

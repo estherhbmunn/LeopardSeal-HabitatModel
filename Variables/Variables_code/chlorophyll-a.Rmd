@@ -8,7 +8,7 @@ getting data
 
 path_copernicusmarine <- "~/miniforge3/bin/conda"
 
-output_directory <- "/home2/ISAD/em1105/2026_Project/Variables"
+output_directory <- "/home2/ISAD/em1105/2026_Project/Variables/Variables_data"
 dir.create(output_directory, showWarnings = FALSE, recursive = TRUE)
 
 command <- paste(
@@ -16,9 +16,9 @@ command <- paste(
   "--dataset-id cmems_mod_glo_bgc_my_0.25deg_P1D-m",
   "--variable chl",
   "--minimum-longitude -94",
-  "--maximum-longitude -24",
-  "--minimum-latitude -75",
-  "--maximum-latitude -44",
+  "--maximum-longitude -20",
+  "--minimum-latitude -85",
+  "--maximum-latitude -52",
   "--start-datetime 2017-10-01T00:00:00",
   "--end-datetime 2019-10-31T00:00:00",
   "--minimum-depth 0.5057600140571594",

@@ -8,34 +8,32 @@ Annual means
 library(terra)
 
 #sst
-mean.sst = app(rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "thetao"), fun='mean', na.rm=T)
+mean.sst = app(rast("/home2/ISAD/em1105/2026_Project/Variables/Variables_data/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-20.00W_80.00S-52.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "thetao"), fun='mean', na.rm=T)
 
 #bathy
-bathy <- rast("/home2/ISAD/em1105/2026_Project/Variables/gebco_2026_n-44.0_s-75.0_w-95.0_e-25.0.nc")
+#code in bathymetry.Rmd chunk 2
 
 #uo
-mean.uo <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "uo"), fun='mean', na.rm=T)
+mean.uo <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/Variables_data/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-20.00W_80.00S-52.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "uo"), fun='mean', na.rm=T)
 
 #roughness
-roughness <- terrain(rast("/home2/ISAD/em1105/2026_Project/Variables/gebco_2026_n-44.0_s-75.0_w-95.0_e-25.0.nc"), "roughness")
-
-mean.rough <- app(roughness, fun='mean', na.rm=T)
+roughness <- terrain(bathy, "roughness")
 
 #chl
 # normal annual mean
-chl <- rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_chlorophyll-a.nc")
+chl <- rast("/home2/ISAD/em1105/2026_Project/Variables/Variables_data/cmems_chlorophyll-a.nc")
 mean.chl <- mean(chl[[1:669]])
 mean.chl3 <- mean(chl[[93:761]])
 
 #vml
-mean.vml <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "mlotst"), fun='mean', na.rm=T)
+mean.vml <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/Variables_data/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-20.00W_80.00S-52.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "mlotst"), fun='mean', na.rm=T)
 
 
 #make them match
 template <- mean.sst
 
 bathy_pred <- resample(bathy, template, method = "bilinear")
-rough_pred <- resample(mean.rough, template, method = "bilinear")
+rough_pred <- resample(roughness, template, method = "bilinear")
 chl_pred <- resample(mean.chl, template, method = "bilinear")
 chl3_pred <- resample(mean.chl3, template, method = "bilinear")
 
@@ -116,10 +114,11 @@ summary(gam_pred)
 #ADD
 
 #vo
-mean.vo <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "vo"), fun='mean', na.rm=T)
+mean.vo <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/Variables_data/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-20.00W_80.00S-52.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "vo"), fun='mean', na.rm=T)
 
 #ice_conc
-mean.ice <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "siconc") , fun='mean', na.rm=T)
+mean.ice <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/Variables_data/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-20.00W_80.00S-52.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "siconc") , fun='mean', na.rm=T)
+
 mean.ice <- subst(mean.ice, NA, 0) #so that open water gets 0 conc. and appears in the predict raster
 
 
@@ -154,7 +153,7 @@ mean_stack_env_gam <- c(mean.sst, bathy_pred, mean.uo, chl_pred, chl3_pred, roug
 
 plot(mean_stack_env_gam)
 
-#saveRDS(mean_stack_env_gam, 'mean_stack_env_gam.rds')
+saveRDS(mean_stack_env_gam, 'mean_stack_env_gam.rds')
 
 #unwrap 
 mean_stack_env_gam <- unwrap(mean_stack_env_gam)
@@ -197,6 +196,8 @@ plot(
 
 Prediction with gam with increased k
 ```{r}
+library(mgcv)
+
 #model with REML and without ID
 gam1_k3_reml_xid <- gam(
   presence ~ 
@@ -216,18 +217,18 @@ plot(prediction_rast_env_gam_k)
 
 #saveRDS(prediction_rast_env_gam_k, 'prediction_rast_env_gam_k.rds')
 #unwrap 
-prediction_rast_env_gam_k <- unwrap(prediction_rast_env_gam_k)
+prediction_rast_env_gam_k <- readRDS('/home2/ISAD/em1105/prediction_rast_env_gam_k.rds')  # loads the PackedSpatRaster
+prediction_rast_env_gam_k <- unwrap(prediction_rast_env_gam_k)          # converts back to SpatRaster
 
-plot(mean_stack_env_gam)
 
 #plot one
 plot(
-  prediction_rast_env_gam_k[[1]],
+  prediction_rast_env_gam_k[[2]],
   col = colorRampPalette(c(
     "#4575b4", "#74add1", "#91bfdb",
     "#fee090", "#fc8d59", "#d73027"
   ))(100),
-  main = "Fit"
+  main = "SE Fit"
 )
 ```
 
@@ -250,19 +251,18 @@ mean_stack_env_gam <- c(mean.sst, bathy_pred, mean.uo, chl_pred, chl3_pred, roug
 
 #chl 1
 # normal annual mean
-chl <- rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_chlorophyll-a.nc")
+chl <- rast("/home2/ISAD/em1105/2026_Project/Variables/Variables_data/cmems_chlorophyll-a.nc")
 mean.chl1 <- mean(chl[[31:699]])
 chl1_pred <- resample(mean.chl1, template, method = "bilinear")
 
 #ssh
-mean.ssh <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "zos"), fun='mean', na.rm=T)
+mean.ssh <- app(rast("/home2/ISAD/em1105/2026_Project/Variables/Variables_data/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-20.00W_80.00S-52.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "zos"), fun='mean', na.rm=T)
 
 #slope
-slope <- terrain(rast("/home2/ISAD/em1105/2026_Project/Variables/gebco_2026_n-44.0_s-75.0_w-95.0_e-25.0.nc"), "slope")
-mean.slope <- app(slope, fun='mean', na.rm=T)
-slope_pred <- resample(mean.slope, template, method = "bilinear")
+slope <- terrain(bathy, "slope")
+slope_pred <- resample(slope, template, method = "bilinear")
 
-#EKE
+#EKE - from Currents.RMD chunk 'EKE'
 mean.EKE <- app(EKE, fun='mean', na.rm=T)
 
 compareGeom(
@@ -278,11 +278,13 @@ names(slope_pred) <- "slope"
 names(mean.ssh) <- "ssh"
 
 #stack
-variable_stack <- c(mean.EKE, chl1_pred, slope_pred, mean.ssh)
+variable_stack <- c(mean.EKE, slope_pred, mean.ssh)
 
 all_stack <- c(mean_stack_env_gam, variable_stack)
 
 plot(all_stack)
+
+plot(all_stack, nc = 3, nr = 4)
 
 #saveRDS(all_stack, 'all_stack.rds')
 

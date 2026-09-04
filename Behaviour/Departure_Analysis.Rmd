@@ -185,18 +185,7 @@ plot(glmm_asgam)
 
 ```
 
-Zero inflation
-```{r}
-library(DHARMa)
-install.packages("mgcViz")
-library(mgcViz)
 
-sim <- simulateResiduals(glmm_asgam)
-plot(sim)
-testDispersion(sim)
-
-table(tracks_b$change_bin)
-```
 
 
 

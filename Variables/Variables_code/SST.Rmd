@@ -9,12 +9,12 @@ set up
 
 library(ncdf4)
 
-nc <- nc_open("cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc")
+nc <- nc_open("/home2/ISAD/em1105/2026_Project/Variables/Variables_data/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_80.00S-52.00S_0.49m_2018-01-01-2019-10-31.nc")
 
 #load into spatraster
 library(terra)
 
-sst <- rast("cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "thetao") 
+sst <- rast("/home2/ISAD/em1105/2026_Project/Variables/Variables_data/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_80.00S-52.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "thetao") 
 
 ```
 

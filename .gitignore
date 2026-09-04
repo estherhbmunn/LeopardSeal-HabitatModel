@@ -9,8 +9,8 @@
 # Large environmental/reference datasets — too big for GitHub,
 # and not authored by us. See README for where to download these.
 *.nc
-Variables/gshhg/
-Variables/Shelf_break_ANTARCTICA_DAmblas/
+Variables/Variables_data/gshhg/
+Variables/Variables_data/Shelf_break_ANTARCTICA_DAmblas/
 
 
 # macOS/Windows junk (harmless to include even if not on Mac/Win)

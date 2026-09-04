@@ -28,19 +28,21 @@ shelf break shp
 library(sf)
 library(ggplot2)
 
-sb <- st_read("~/2026_Project/Variables/Shelf_break_ANTARCTICA_DAmblas/Shelf_break_Antarctica_DAmblas.shp")
+sb <- st_read("~/2026_Project/Variables/Variables_data/Shelf_break_ANTARCTICA_DAmblas/Shelf_break_Antarctica_DAmblas.shp")
 
 ggplot() +
   geom_sf(data = sb, colour = "blue", fill = NA, linewidth = 0.4) +
   theme_minimal()
+
+st_crs(sb) <- 3031
 
 sb <- st_transform(sb, 4326)
 
 #crop to my range
 sb_crop <- st_crop(
   sb,
-  xmin = -94, xmax = -24,
-  ymin = -75,  ymax = -44
+  xmin = -94, xmax = -20,
+  ymin = -85,  ymax = -52
 )
 
 #plot

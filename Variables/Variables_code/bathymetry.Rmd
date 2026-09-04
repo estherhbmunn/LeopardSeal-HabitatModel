@@ -1,0 +1,67 @@
+---
+title: "bathymetry"
+output: html_document
+date: "2026-05-31"
+---
+
+```{r}
+
+library(terra)
+
+tracks <- tracks_with_vars
+
+tracks_vect <- vect(as.data.frame(tracks), geom = c("lon", "lat"), crs = "EPSG:4326")
+
+bathy <- rast("gebco_2026_n-44.0_s-75.0_w-95.0_e-25.0.nc")
+
+tracks$bathy <- NA_real_ #make column, for now NAs
+
+vals <- terra::extract(bathy, tracks_vect)
+tracks$bathy <- vals[, 2]
+
+#remove >0 m
+tracks <- subset(tracks, bathy <= 0)
+
+saveRDS(tracks, "tracks_with_vars.rds")
+
+
+```
+
+loading in from opendap 
+```{r}
+library(ncdf4)
+nc <- nc_open("https://dap.ceda.ac.uk/thredds/dodsC/bodc/gebco/global/gebco_2026/ice_surface_elevation/netcdf/GEBCO_2026.nc")
+
+# check variable/dimension names first
+print(nc)
+
+lon <- ncvar_get(nc, "lon")
+lat <- ncvar_get(nc, "lat")
+
+# bounding box (94–24°W, 80–52°S)
+i_idx <- which(lon >= -94 & lon <= -20)
+j_idx <- which(lat >= -85 & lat <= -52)
+
+elev <- ncvar_get(nc, "elevation",
+                   start = c(min(i_idx), min(j_idx)),
+                   count = c(length(i_idx), length(j_idx)))
+
+# make into a raster
+
+library(terra)
+
+# Transpose so rows = lat, cols = lon
+elev_t <- t(elev)
+
+# Flip rows so northernmost latitude is first (top row)
+elev_t <- elev_t[nrow(elev_t):1, ]
+
+# Now build the raster, telling terra the real-world coordinates it spans
+bathy <- rast(elev_t,
+          extent = ext(min(lon[i_idx]), max(lon[i_idx]),
+                       min(lat[j_idx]), max(lat[j_idx])),
+          crs = "EPSG:4326")
+
+plot(bathy)
+```
+

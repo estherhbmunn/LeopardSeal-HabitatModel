@@ -10,10 +10,10 @@ library(ncdf4)
 library(terra)
 
 #uo — eastward sea water velocity (m/s)
-uo <- rast("cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "uo") 
+uo <- rast("/home2/ISAD/em1105/2026_Project/Variables/Variables_data/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-20.00W_80.00S-52.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "uo") 
 
 #vo — northward sea water velocity (m/s)
-vo <- rast("cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-24.00W_75.00S-44.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "vo") 
+vo <- rast("/home2/ISAD/em1105/2026_Project/Variables/Variables_data/cmems_mod_glo_phy_my_0.083deg_P1D-m_multi-vars_94.00W-20.00W_80.00S-52.00S_0.49m_2018-01-01-2019-10-31.nc", subds = "vo") 
 
 ```
 

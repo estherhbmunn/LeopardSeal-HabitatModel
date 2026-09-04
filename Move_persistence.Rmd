@@ -111,7 +111,7 @@ movement persistence model
 ```{r}
 ls11.fit.3 <- fit_ssm(ls11.clean, 
                vmax= 4, 
-               model = "mp", # Use the correlated random walk model
+               model = "mp",
                time.step = 6, 
                control = ssm_control(verbose = 0))
 ```
